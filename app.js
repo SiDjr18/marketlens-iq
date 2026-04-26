@@ -64,6 +64,13 @@ function cacheElements() {
     "filterTherapy",
     "filterMolecule",
     "filterCompany",
+    "filterMarketTypeChips",
+    "filterCompanyTypeChips",
+    "filterProductTypeChips",
+    "filterBrandChips",
+    "filterTherapyChips",
+    "filterMoleculeChips",
+    "filterCompanyChips",
     "clearStrategicFilters",
     "generateBrandPlan",
     "mappingWarnings",
@@ -87,6 +94,7 @@ function cacheElements() {
     "dataSourceLabel",
     "summaryHeadline",
     "healthScore",
+    "activeFilterRibbon",
     "executiveGrid",
     "kpiGrid",
     "trendTitle",
@@ -199,6 +207,14 @@ function bindEvents() {
   getStrategicFilterConfig().forEach(({ role, id }) => {
     els[id].addEventListener("change", () => {
       state.strategicFilters[role] = getSelectedValues(els[id]);
+      updateStrategicFilterOptions(role);
+      renderDashboard();
+    });
+    const chipContainer = els[`${id}Chips`];
+    chipContainer.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-filter-value]");
+      if (!button || button.disabled) return;
+      toggleStrategicFilter(role, button.dataset.filterValue);
       updateStrategicFilterOptions(role);
       renderDashboard();
     });
@@ -732,13 +748,13 @@ function setOptions(select, options, selected, emptyLabel) {
 
 function getStrategicFilterConfig() {
   return [
-    { role: "marketType", id: "filterMarketType", label: "Market type" },
-    { role: "companyType", id: "filterCompanyType", label: "Company type" },
-    { role: "productType", id: "filterProductType", label: "Product type" },
-    { role: "brand", id: "filterBrand", label: "Brand" },
-    { role: "therapy", id: "filterTherapy", label: "Therapy" },
-    { role: "molecule", id: "filterMolecule", label: "Molecule" },
-    { role: "company", id: "filterCompany", label: "Company / competitor" }
+    { role: "marketType", id: "filterMarketType", label: "Market type", limit: 12 },
+    { role: "companyType", id: "filterCompanyType", label: "Company type", limit: 12 },
+    { role: "productType", id: "filterProductType", label: "Product type", limit: 12 },
+    { role: "brand", id: "filterBrand", label: "Brand", limit: 36 },
+    { role: "therapy", id: "filterTherapy", label: "Therapy", limit: 36 },
+    { role: "molecule", id: "filterMolecule", label: "Molecule", limit: 36 },
+    { role: "company", id: "filterCompany", label: "Company / competitor", limit: 36 }
   ];
 }
 
@@ -810,18 +826,24 @@ function renderMappingWarnings() {
 }
 
 function updateStrategicFilterOptions(changedRole) {
-  getStrategicFilterConfig().forEach(({ role, id, label }) => {
+  getStrategicFilterConfig().forEach(({ role, id, label, limit }) => {
     const column = state.columnMap[role];
     const selected = role === changedRole ? state.strategicFilters[role] : state.strategicFilters[role].filter(Boolean);
     const baseRows = applyStrategicFilters(state.rows, role);
-    const values = column ? getTopCategoricalValues(baseRows, column, 160) : [];
+    const values = column ? getTopCategoricalValues(baseRows, column, limit || 36) : [];
     els[id].innerHTML = "";
+    const chipContainer = els[`${id}Chips`];
+    chipContainer.innerHTML = "";
     if (!column) {
       const option = document.createElement("option");
       option.textContent = `Map ${label} first`;
       option.disabled = true;
       els[id].appendChild(option);
+      chipContainer.innerHTML = `<button class="filter-chip is-disabled" type="button" disabled>Map ${escapeHtml(label)} first</button>`;
       return;
+    }
+    if (!values.length) {
+      chipContainer.innerHTML = `<button class="filter-chip is-disabled" type="button" disabled>No values</button>`;
     }
     values.forEach((value) => {
       const option = document.createElement("option");
@@ -829,9 +851,23 @@ function updateStrategicFilterOptions(changedRole) {
       option.textContent = value;
       option.selected = selected.includes(value);
       els[id].appendChild(option);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `filter-chip ${selected.includes(value) ? "is-selected" : ""}`;
+      button.dataset.filterValue = value;
+      button.textContent = value;
+      button.setAttribute("aria-pressed", selected.includes(value) ? "true" : "false");
+      chipContainer.appendChild(button);
     });
     state.strategicFilters[role] = selected.filter((value) => values.includes(value));
   });
+}
+
+function toggleStrategicFilter(role, value) {
+  const current = new Set(state.strategicFilters[role] || []);
+  if (current.has(value)) current.delete(value);
+  else current.add(value);
+  state.strategicFilters[role] = Array.from(current);
 }
 
 function getTopCategoricalValues(rows, column, limit) {
@@ -929,6 +965,41 @@ function renderShellText() {
   const filled = state.columns.reduce((acc, column) => acc + (state.profile.details[column]?.filled || 0), 0);
   const possible = Math.max(1, state.columns.length * Math.max(1, state.rows.length));
   els.healthScore.textContent = `${Math.round((filled / possible) * 100)}%`;
+  renderActiveFilterRibbon();
+}
+
+function renderActiveFilterRibbon() {
+  const active = getStrategicFilterConfig().flatMap(({ role, label }) => {
+    return (state.strategicFilters[role] || []).map((value) => ({ role, label, value }));
+  });
+  if (!active.length) {
+    els.activeFilterRibbon.innerHTML = `
+      <div class="ribbon-empty">
+        <i data-lucide="sliders-horizontal" aria-hidden="true"></i>
+        <span>No strategic filters selected. Tap filter buttons to focus the dashboard.</span>
+      </div>
+    `;
+    return;
+  }
+  els.activeFilterRibbon.innerHTML = `
+    <div class="ribbon-label">Active view</div>
+    <div class="ribbon-chips">
+      ${active.map((item) => `
+        <button class="active-filter-chip" type="button" data-role="${escapeHtml(item.role)}" data-filter-value="${escapeHtml(item.value)}">
+          <span>${escapeHtml(item.label)}</span>
+          ${escapeHtml(item.value)}
+          <i data-lucide="x" aria-hidden="true"></i>
+        </button>
+      `).join("")}
+    </div>
+  `;
+  els.activeFilterRibbon.querySelectorAll("[data-role]").forEach((button) => {
+    button.addEventListener("click", () => {
+      toggleStrategicFilter(button.dataset.role, button.dataset.filterValue);
+      updateControls();
+      renderDashboard();
+    });
+  });
 }
 
 function renderExecutiveSummary() {
@@ -1062,6 +1133,7 @@ function renderCharts() {
   const css = getComputedStyle(document.documentElement);
   const axisColor = css.getPropertyValue("--muted").trim();
   const gridColor = css.getPropertyValue("--line").trim();
+  const panelColor = css.getPropertyValue("--panel").trim() || "#151b2a";
 
   state.charts.trend = new Chart(document.getElementById("trendChart"), {
     type: "line",
@@ -1108,7 +1180,7 @@ function renderCharts() {
           data: mixData.map((item) => item.value),
           backgroundColor: chartPalette.slice(0, mixData.length),
           borderWidth: 2,
-          borderColor: "#fffdf8"
+          borderColor: panelColor
         }
       ]
     },

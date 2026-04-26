@@ -922,6 +922,358 @@ tr:last-child td {
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* Console UI refresh */
+:root {
+  --bg: #080d16;
+  --surface: #0d1320;
+  --panel: #151b2a;
+  --ink: #f5f7fb;
+  --muted: #a1a9ba;
+  --line: rgba(176, 188, 213, 0.16);
+  --accent: #31d0aa;
+  --accent-2: #f4bd4f;
+  --accent-3: #5aa7ff;
+  --accent-4: #a78bfa;
+  --critical: #f87171;
+  --soft: rgba(49, 208, 170, 0.1);
+  --good: #34d399;
+  --bad: #fb7185;
+  --shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+}
+
+body {
+  background:
+    radial-gradient(circle at top left, rgba(49, 208, 170, 0.11), transparent 34rem),
+    radial-gradient(circle at top right, rgba(244, 189, 79, 0.09), transparent 30rem),
+    var(--bg);
+}
+
+.app-shell {
+  grid-template-columns: 360px minmax(0, 1fr);
+}
+
+.sidebar {
+  background: rgba(12, 18, 30, 0.94);
+  border-right-color: var(--line);
+  padding: 22px;
+}
+
+.brand-mark {
+  background: linear-gradient(135deg, #31d0aa 0%, #5aa7ff 52%, #f4bd4f 100%);
+  color: #071018;
+}
+
+.brand-title,
+h1,
+h2,
+.executive-value,
+.kpi-value,
+.mini-metric strong {
+  color: var(--ink);
+}
+
+.panel,
+.dashboard-surface,
+.kpi-card,
+.chart-panel,
+.insight-panel,
+.table-panel,
+.strategy-card,
+.framework-card,
+.brand-plan-section,
+.mini-metric {
+  background: linear-gradient(180deg, rgba(24, 31, 48, 0.96), rgba(18, 25, 39, 0.96));
+  border-color: var(--line);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+}
+
+.panel {
+  gap: 14px;
+}
+
+.strategic-panel {
+  border-color: rgba(49, 208, 170, 0.28);
+}
+
+label {
+  color: #d8deea;
+}
+
+select,
+input {
+  background: #101827;
+  border-color: rgba(176, 188, 213, 0.2);
+  color: var(--ink);
+}
+
+select:focus-visible,
+button:focus-visible,
+.drop-zone:focus-visible {
+  outline: 2px solid rgba(49, 208, 170, 0.65);
+  outline-offset: 2px;
+}
+
+.native-filter {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chip-filter {
+  gap: 9px;
+}
+
+.filter-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(176, 188, 213, 0.14);
+  border-radius: var(--radius);
+  background: rgba(8, 13, 22, 0.54);
+}
+
+.scroll-chips {
+  max-height: 142px;
+  overflow: auto;
+  align-content: flex-start;
+}
+
+.filter-chip,
+.active-filter-chip {
+  border: 1px solid rgba(176, 188, 213, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  color: #dce4f2;
+  min-height: 31px;
+  padding: 0 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  max-width: 100%;
+}
+
+.filter-chip:hover,
+.active-filter-chip:hover {
+  border-color: rgba(49, 208, 170, 0.55);
+  background: rgba(49, 208, 170, 0.12);
+}
+
+.filter-chip.is-selected,
+.active-filter-chip {
+  color: #071018;
+  background: linear-gradient(135deg, #31d0aa, #f4bd4f);
+  border-color: transparent;
+}
+
+.filter-chip.is-disabled {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+  border-style: dashed;
+}
+
+.active-filter-ribbon {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(8, 13, 22, 0.45);
+}
+
+.ribbon-empty {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ribbon-empty svg {
+  width: 17px;
+  height: 17px;
+  color: var(--accent);
+}
+
+.ribbon-label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.ribbon-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.active-filter-chip span {
+  color: rgba(7, 16, 24, 0.72);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.active-filter-chip svg {
+  width: 13px;
+  height: 13px;
+}
+
+.drop-zone,
+.privacy-note,
+.summary-strip,
+.competitor-list,
+.empty-state,
+.insight-list li,
+.quadrant-items span {
+  background: rgba(8, 13, 22, 0.48);
+  border-color: var(--line);
+  color: #cdd5e4;
+}
+
+.drop-zone {
+  border-color: rgba(49, 208, 170, 0.34);
+}
+
+.drop-zone:hover,
+.drop-zone.is-over,
+.drop-zone:focus-visible {
+  background: rgba(49, 208, 170, 0.1);
+}
+
+.action-btn,
+.icon-btn,
+.segment {
+  border-color: rgba(176, 188, 213, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ink);
+}
+
+.action-btn:hover,
+.icon-btn:hover,
+.segment:hover {
+  border-color: rgba(49, 208, 170, 0.45);
+  background: rgba(49, 208, 170, 0.12);
+}
+
+.primary-action,
+.segment.is-active {
+  background: linear-gradient(135deg, #31d0aa, #5aa7ff);
+  border-color: transparent;
+  color: #071018;
+}
+
+.topbar {
+  padding: 2px 0 8px;
+}
+
+.topbar-actions {
+  align-items: center;
+}
+
+.dashboard-surface {
+  padding: 22px;
+}
+
+.summary-strip {
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  padding: 16px;
+}
+
+.executive-grid {
+  grid-template-columns: 1.3fr 0.85fr 0.85fr;
+}
+
+.executive-tile {
+  background: linear-gradient(180deg, rgba(24, 31, 48, 0.98), rgba(18, 25, 39, 0.98));
+  border-color: var(--line);
+}
+
+.executive-tile.primary {
+  background: linear-gradient(135deg, #0f2f32 0%, #19294f 58%, #5a3413 100%);
+  border-color: rgba(49, 208, 170, 0.28);
+}
+
+.kpi-card::before {
+  width: 5px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-3));
+}
+
+.kpi-card.priority::before {
+  background: linear-gradient(180deg, var(--accent-2), #fb7185);
+}
+
+.badge {
+  background: rgba(49, 208, 170, 0.08);
+  border-color: rgba(49, 208, 170, 0.26);
+  color: #b7f7e6;
+}
+
+.framework-card p,
+.brand-plan-section p,
+.strategy-card p,
+.executive-note,
+.kpi-note,
+.competitor-list,
+.table-wrap,
+.mini-metric span,
+.mini-metric small {
+  color: #b8c1d2;
+}
+
+.quadrant.defend {
+  background: linear-gradient(180deg, rgba(21, 128, 61, 0.2), rgba(20, 83, 45, 0.14));
+  border-color: rgba(52, 211, 153, 0.34);
+}
+
+.quadrant.invest {
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.2), rgba(30, 64, 175, 0.14));
+  border-color: rgba(96, 165, 250, 0.34);
+}
+
+.quadrant.optimize {
+  background: linear-gradient(180deg, rgba(180, 83, 9, 0.22), rgba(113, 63, 18, 0.14));
+  border-color: rgba(251, 191, 36, 0.34);
+}
+
+.quadrant.reposition {
+  background: linear-gradient(180deg, rgba(190, 18, 60, 0.18), rgba(136, 19, 55, 0.13));
+  border-color: rgba(251, 113, 133, 0.34);
+}
+
+.table-wrap {
+  background: rgba(8, 13, 22, 0.36);
+}
+
+th {
+  background: #101827;
+  color: #d7deeb;
+}
+
+td,
+th {
+  border-bottom-color: rgba(176, 188, 213, 0.12);
+}
+
+.theme-copper,
+.theme-harbor {
+  --bg: #080d16;
+  --surface: #0d1320;
+  --panel: #151b2a;
+  --ink: #f5f7fb;
+  --muted: #a1a9ba;
+  --line: rgba(176, 188, 213, 0.16);
+  --soft: rgba(49, 208, 170, 0.1);
+}
+
 @media (max-width: 1080px) {
   .app-shell {
     grid-template-columns: 1fr;
