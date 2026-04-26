@@ -46,6 +46,8 @@ For the best experience with large files, use a modern Chromium browser because 
 5. Select the `main` branch and root folder.
 6. Open the generated GitHub Pages URL.
 
+More deployment options are documented in `DEPLOYMENT.md`.
+
 ## Exports
 
 - `PPT`: boardroom-ready PowerPoint deck
@@ -88,4 +90,4 @@ All recommendations are rule-based and calculated from the selected workbook, me
 
 ## Privacy
 
-All analysis runs in the browser. Files are not uploaded to a server by this static app.
+All analysis runs in the browser. Files are not uploaded to a server by this static app. See `PRIVACY.md` for details and enterprise self-hosting notes.

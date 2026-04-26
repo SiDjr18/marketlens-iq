@@ -174,6 +174,26 @@ button {
   gap: 10px;
 }
 
+.privacy-note {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: start;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #b9d7cf;
+  border-radius: var(--radius);
+  background: #eefaf6;
+  color: #43524f;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.privacy-note svg {
+  width: 17px;
+  height: 17px;
+  color: var(--accent);
+}
+
 label {
   display: grid;
   gap: 6px;
