@@ -10,8 +10,8 @@ import { MultiSelect } from "../ui/MultiSelect";
 import { Select } from "../ui/Select";
 
 export function BrandPlan({ context, onOpenMapping }: { context: AnalyticsContext; onOpenMapping: () => void }) {
-  const brands = useMemo(() => aggregateByBrand(context.rows, context.mapping, context.filters.metric), [context]);
-  const therapies = useMemo(() => aggregateByTherapy(context.rows, context.mapping, context.filters.metric), [context]);
+  const brands = useMemo(() => aggregateByBrand(context.rows, context.mapping, context.filters.metric, context.filters), [context]);
+  const therapies = useMemo(() => aggregateByTherapy(context.rows, context.mapping, context.filters.metric, context.filters), [context]);
   const [input, setInput] = useState<BrandPlanInput>({
     brand: brands[0]?.name ?? "",
     therapy: therapies[0]?.name ?? "",

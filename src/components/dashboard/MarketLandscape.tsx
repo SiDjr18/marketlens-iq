@@ -6,10 +6,10 @@ import { TherapySplitChart } from "../charts/TherapySplitChart";
 import { TrendChart } from "../charts/TrendChart";
 
 export function MarketLandscape({ context }: { context: AnalyticsContext }) {
-  const brands = aggregateByBrand(context.rows, context.mapping, context.filters.metric);
-  const companies = aggregateByCompany(context.rows, context.mapping, context.filters.metric);
-  const therapies = aggregateByTherapy(context.rows, context.mapping, context.filters.metric);
-  const molecules = aggregateByMolecule(context.rows, context.mapping, context.filters.metric);
+  const brands = aggregateByBrand(context.rows, context.mapping, context.filters.metric, context.filters);
+  const companies = aggregateByCompany(context.rows, context.mapping, context.filters.metric, context.filters);
+  const therapies = aggregateByTherapy(context.rows, context.mapping, context.filters.metric, context.filters);
+  const molecules = aggregateByMolecule(context.rows, context.mapping, context.filters.metric, context.filters);
 
   return (
     <div className="grid grid-cols-12 gap-4">

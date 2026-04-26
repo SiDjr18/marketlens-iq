@@ -6,9 +6,9 @@ import { isStrategyReady } from "../mapping/validateMapping";
 export function generateInsights(context: AnalyticsContext): Insight[] {
   if (!isStrategyReady(context.health)) return [];
 
-  const brands = aggregateByBrand(context.rows, context.mapping, context.filters.metric);
-  const companies = aggregateByCompany(context.rows, context.mapping, context.filters.metric);
-  const therapies = aggregateByTherapy(context.rows, context.mapping, context.filters.metric);
+  const brands = aggregateByBrand(context.rows, context.mapping, context.filters.metric, context.filters);
+  const companies = aggregateByCompany(context.rows, context.mapping, context.filters.metric, context.filters);
+  const therapies = aggregateByTherapy(context.rows, context.mapping, context.filters.metric, context.filters);
   const leader = brands[0];
   const challenger = brands[1];
   const topCompany = companies[0];
@@ -65,7 +65,7 @@ export function generateInsights(context: AnalyticsContext): Insight[] {
 
 export function supportedFrameworks(context: AnalyticsContext): Array<{ title: string; summary: string; action: string }> {
   if (!isStrategyReady(context.health)) return [];
-  const brands = aggregateByBrand(context.rows, context.mapping, context.filters.metric);
+  const brands = aggregateByBrand(context.rows, context.mapping, context.filters.metric, context.filters);
   const leader = brands[0];
   const second = brands[1];
   const growth = leader?.growth ?? 0;

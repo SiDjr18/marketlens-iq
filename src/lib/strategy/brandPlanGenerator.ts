@@ -7,9 +7,9 @@ import { isStrategyReady } from "../mapping/validateMapping";
 export function generateBrandPlan(context: AnalyticsContext, input: BrandPlanInput): BrandPlanSection[] {
   if (!isStrategyReady(context.health)) return [];
 
-  const brands = aggregateByBrand(context.rows, context.mapping, context.filters.metric);
-  const therapies = aggregateByTherapy(context.rows, context.mapping, context.filters.metric);
-  const companies = aggregateByCompany(context.rows, context.mapping, context.filters.metric);
+  const brands = aggregateByBrand(context.rows, context.mapping, context.filters.metric, context.filters);
+  const therapies = aggregateByTherapy(context.rows, context.mapping, context.filters.metric, context.filters);
+  const companies = aggregateByCompany(context.rows, context.mapping, context.filters.metric, context.filters);
   const selected = brands.find((row) => row.name === input.brand) ?? brands[0];
   const therapy = therapies.find((row) => row.name === input.therapy) ?? therapies[0];
   const competitorPack = competitorAnalytics(context.rows, context.mapping, context.filters, "brand");

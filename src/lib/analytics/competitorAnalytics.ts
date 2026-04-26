@@ -12,12 +12,12 @@ export type CompetitorPack = {
 export function competitorAnalytics(rows: RawRow[], mapping: FieldMapping, filters: FilterState, level: "brand" | "company" | "therapy" | "molecule" = "brand"): CompetitorPack {
   const list =
     level === "company"
-      ? aggregateByCompany(rows, mapping, filters.metric)
+      ? aggregateByCompany(rows, mapping, filters.metric, filters)
       : level === "therapy"
-        ? aggregateByTherapy(rows, mapping, filters.metric)
+        ? aggregateByTherapy(rows, mapping, filters.metric, filters)
         : level === "molecule"
-          ? aggregateByMolecule(rows, mapping, filters.metric)
-          : aggregateByBrand(rows, mapping, filters.metric);
+          ? aggregateByMolecule(rows, mapping, filters.metric, filters)
+          : aggregateByBrand(rows, mapping, filters.metric, filters);
 
   const selectedName = filters[level]?.[0] ?? list[0]?.name ?? "";
   const selected = list.find((row) => row.name === selectedName) ?? list[0] ?? null;

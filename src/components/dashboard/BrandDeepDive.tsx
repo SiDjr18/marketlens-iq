@@ -7,7 +7,7 @@ import { TrendChart } from "../charts/TrendChart";
 import { Card } from "../ui/Card";
 
 export function BrandDeepDive({ context }: { context: AnalyticsContext }) {
-  const brands = aggregateByBrand(context.rows, context.mapping, context.filters.metric);
+  const brands = aggregateByBrand(context.rows, context.mapping, context.filters.metric, context.filters);
   const selectedName = context.filters.brand[0] ?? brands[0]?.name;
   const selected = brands.find((brand) => brand.name === selectedName) ?? brands[0];
   const competitors = competitorAnalytics(context.rows, context.mapping, context.filters, "brand");

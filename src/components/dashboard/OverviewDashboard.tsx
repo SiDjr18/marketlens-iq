@@ -14,10 +14,10 @@ import { KpiCard } from "./KpiCard";
 export function OverviewDashboard({ context }: { context: AnalyticsContext }) {
   const { rows, mapping, filters } = context;
   const kpis = calculateKpis(rows, mapping, filters);
-  const brands = aggregateByBrand(rows, mapping, filters.metric);
-  const companies = aggregateByCompany(rows, mapping, filters.metric);
-  const therapies = aggregateByTherapy(rows, mapping, filters.metric);
-  const molecules = aggregateByMolecule(rows, mapping, filters.metric);
+  const brands = aggregateByBrand(rows, mapping, filters.metric, filters);
+  const companies = aggregateByCompany(rows, mapping, filters.metric, filters);
+  const therapies = aggregateByTherapy(rows, mapping, filters.metric, filters);
+  const molecules = aggregateByMolecule(rows, mapping, filters.metric, filters);
   const trend = trendByPeriod(rows, mapping, filters.metric);
 
   return (

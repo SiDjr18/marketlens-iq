@@ -5,8 +5,8 @@ import { RankingTable } from "../charts/RankingTable";
 import { SharePieChart } from "../charts/SharePieChart";
 
 export function MoleculeAnalysis({ context }: { context: AnalyticsContext }) {
-  const molecules = aggregateByMolecule(context.rows, context.mapping, context.filters.metric);
-  const brands = aggregateByBrand(context.rows, context.mapping, context.filters.metric);
+  const molecules = aggregateByMolecule(context.rows, context.mapping, context.filters.metric, context.filters);
+  const brands = aggregateByBrand(context.rows, context.mapping, context.filters.metric, context.filters);
   return (
     <div className="grid grid-cols-12 gap-4">
       <div className="col-span-12 lg:col-span-4">

@@ -4,7 +4,7 @@ import type { AnalyticsContext, DashboardTab, DataHealth, FieldMapping, FilterSt
 import { parseFile, getColumns } from "../lib/ingestion/parseFile";
 import { autoMapColumns } from "../lib/mapping/autoMapColumns";
 import { validateMapping } from "../lib/mapping/validateMapping";
-import { applyFilters, fieldText } from "../lib/analytics/aggregateData";
+import { applyFilters, availableTimePeriods, fieldText } from "../lib/analytics/aggregateData";
 import { calculateKpis } from "../lib/analytics/calculateKpis";
 import { generateInsights } from "../lib/strategy/insightEngine";
 import { cellText, parsePeriod, unique } from "../lib/utils/formatters";
@@ -110,6 +110,7 @@ export default function App() {
   const filterOptions = useMemo<FilterOptions>(() => {
     const fromField = (field: PharmaField) => unique(activeRows.map((row) => fieldText(row, mapping, field)).filter(Boolean)).slice(0, 500);
     const periods = mapping.month ? unique(activeRows.map((row) => parsePeriod(row[mapping.month as string])).filter(Boolean)).slice(0, 250) : [];
+    const widePeriods = availableTimePeriods(activeRows).slice(0, 250);
     return {
       marketType: unique([...STATIC_FILTER_OPTIONS.marketType, ...fromField("marketType")]),
       companyType: unique([...STATIC_FILTER_OPTIONS.companyType, ...fromField("companyType")]),
@@ -118,7 +119,7 @@ export default function App() {
       therapy: fromField("therapy"),
       molecule: fromField("molecule"),
       company: fromField("company"),
-      timePeriod: periods
+      timePeriod: unique([...widePeriods, ...periods])
     };
   }, [activeRows, mapping]);
 
@@ -206,6 +207,11 @@ export default function App() {
     setAppliedFilters(FILTER_DEFAULTS);
   }
 
+  function updateFilters(nextFilters: FilterState) {
+    setDraftFilters(nextFilters);
+    setAppliedFilters(nextFilters);
+  }
+
   function openTab(tab: DashboardTab) {
     if (health.status !== "ready" && (tab === "strategy" || tab === "brandPlan")) {
       setMappingOpen(true);
@@ -289,7 +295,7 @@ export default function App() {
         onUploadClick={() => uploadInputRef.current?.click()}
         onSettingsClick={() => setSettingsOpen(true)}
         onTabChange={openTab}
-        onFilterChange={setDraftFilters}
+        onFilterChange={updateFilters}
         onApplyFilters={() => setAppliedFilters(draftFilters)}
         onClearFilters={clearFilters}
         onSaveView={saveView}

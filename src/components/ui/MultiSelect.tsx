@@ -2,21 +2,33 @@ import { ChevronDown, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
 type MultiSelectProps = {
+  id?: string;
   label: string;
   options: string[];
   value: string[];
   onChange: (value: string[]) => void;
   placeholder?: string;
   disabled?: boolean;
+  openId?: string | null;
+  onOpenChange?: (id: string | null) => void;
 };
 
-export function MultiSelect({ label, options, value, onChange, placeholder = "All", disabled = false }: MultiSelectProps) {
-  const [open, setOpen] = useState(false);
+export function MultiSelect({ id, label, options, value, onChange, placeholder = "All", disabled = false, openId, onOpenChange }: MultiSelectProps) {
+  const [localOpen, setLocalOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const isControlled = Boolean(id && onOpenChange);
+  const open = isControlled ? openId === id : localOpen;
   const filtered = useMemo(
     () => options.filter((option) => option.toLowerCase().includes(query.toLowerCase())).slice(0, 80),
     [options, query]
   );
+
+  function setOpen(next: boolean) {
+    if (disabled) return;
+    if (isControlled) onOpenChange?.(next ? id ?? null : null);
+    else setLocalOpen(next);
+    if (!next) setQuery("");
+  }
 
   function toggleOption(option: string) {
     onChange(value.includes(option) ? value.filter((item) => item !== option) : [...value, option]);
@@ -28,7 +40,7 @@ export function MultiSelect({ label, options, value, onChange, placeholder = "Al
       <button
         type="button"
         disabled={disabled}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => setOpen(!open)}
         className="flex h-10 w-full items-center justify-between gap-2 rounded-xl border border-border bg-white px-3 text-left text-sm font-semibold text-slate-900 shadow-sm outline-none transition hover:border-teal disabled:opacity-50"
       >
         <span className="min-w-0 truncate">{value.length ? `${value.length} selected` : placeholder}</span>
