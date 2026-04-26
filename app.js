@@ -281,9 +281,19 @@ async function handleFile(file) {
         workbook.SheetNames.forEach((sheetName) => {
           sheets[sheetName] = sheetToRows(workbook.Sheets[sheetName]);
         });
+        if (Object.values(sheets).every((rows) => !rows.length) && /\.xlsx$/i.test(file.name) && "DecompressionStream" in window) {
+          showToast("Normal Excel parser returned no rows. Retrying with IMS/IQVIA streaming mode.");
+          const sampled = await readLargeXlsxSample(file, rowLimit || 8000);
+          state.workbook = sampled.sheets;
+          state.sheetNames = sampled.sheetNames;
+          state.selectedSheet = sampled.sheetNames[0];
+          state.isSampled = true;
+          state.rowLimit = rowLimit || 8000;
+        } else {
         state.workbook = sheets;
         state.sheetNames = workbook.SheetNames;
         state.selectedSheet = workbook.SheetNames[0];
+        }
       }
     }
   state.fileName = file.name;
@@ -319,7 +329,9 @@ function getWorkbookRowLimit(file) {
 }
 
 function shouldUseLargeWorkbookMode(file) {
-  return /\.xlsx$/i.test(file.name) && file.size >= 220 * 1024 * 1024;
+  const name = normalize(file.name);
+  const mb = file.size / (1024 * 1024);
+  return /\.xlsx$/i.test(file.name) && (mb >= 50 || /ims|iqvia|mat|market|pharma/.test(name));
 }
 
 function enrichRowsForAnalysis(rows) {
@@ -1436,14 +1448,24 @@ async function readSheetRowsStreaming(file, entry, sharedStrings, maxRows) {
     let rowEnd = buffer.indexOf("</row>");
     while (rowEnd >= 0 && rows.length < maxRows) {
       const rowStart = buffer.lastIndexOf("<row", rowEnd);
-      if (rowStart < 0) break;
+      if (rowStart < 0) {
+        buffer = buffer.slice(rowEnd + 6);
+        rowEnd = buffer.indexOf("</row>");
+        continue;
+      }
       const rowXml = buffer.slice(rowStart, rowEnd + 6);
       const parsed = parseSheetRow(rowXml, sharedStrings);
       if (parsed.some((cell) => !isBlank(cell))) rows.push(parsed);
       buffer = buffer.slice(rowEnd + 6);
       rowEnd = buffer.indexOf("</row>");
     }
-    if (buffer.length > 200000) buffer = buffer.slice(-50000);
+    if (rows.length && rows.length % 500 === 0) {
+      showToast(`Large workbook mode: ${formatNumber(rows.length)} rows sampled...`);
+    }
+    if (buffer.length > 25000000) {
+      const lastRowStart = buffer.lastIndexOf("<row");
+      buffer = lastRowStart > 0 ? buffer.slice(lastRowStart) : buffer.slice(-1000000);
+    }
   }
 
   try {

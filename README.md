@@ -44,7 +44,7 @@ For the best experience with large files, use a modern Chromium browser because 
 
 ## Large IMS/IQVIA Files
 
-For files above roughly `220 MB`, the app switches to large workbook mode. It reads workbook metadata and samples the first analyzable rows without expanding the entire Excel file into memory. This makes 400-500 MB IMS/IQVIA datasets usable in the browser while keeping the dashboard responsive.
+For IMS/IQVIA-like `.xlsx` files, and for workbooks above roughly `50 MB`, the app switches to large workbook mode. It reads workbook metadata and samples the first analyzable rows without expanding the entire Excel file into memory. This makes 100-500 MB IMS/IQVIA datasets usable in the browser while keeping the dashboard responsive.
 
 Large mode is intentionally sample-based. For enterprise production use where every row must be processed, connect the same dashboard UI to a server-side ETL pipeline or warehouse.
 
