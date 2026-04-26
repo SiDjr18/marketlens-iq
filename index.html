@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>MarketLens IQ - Excel & IMS Dashboard Studio</title>
-    <link rel="stylesheet" href="./styles.css?v=20260426-ims3" />
+    <link rel="stylesheet" href="./styles.css?v=20260426-upload-only" />
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -27,14 +27,14 @@
           <div id="dropZone" class="drop-zone" tabindex="0">
             <i data-lucide="file-up" aria-hidden="true"></i>
             <div>
-              <strong>Import workbook</strong>
+              <strong>Import IMS/IQVIA workbook</strong>
               <span>XLSX, XLS, CSV, TSV, JSON, or SQL</span>
             </div>
             <input id="fileInput" type="file" accept=".xlsx,.xls,.csv,.tsv,.json,.sql" />
           </div>
           <div class="file-meta">
-            <span id="fileName">Sample dataset loaded</span>
-            <span id="rowCount">0 rows</span>
+            <span id="fileName">No workbook loaded</span>
+            <span id="rowCount">Upload file</span>
           </div>
           <div class="privacy-note">
             <i data-lucide="shield-check" aria-hidden="true"></i>
@@ -174,7 +174,7 @@
           <div class="summary-strip">
             <div>
               <span id="dataSourceLabel">Sample data</span>
-              <strong id="summaryHeadline">Upload a workbook or use the sample board.</strong>
+              <strong id="summaryHeadline">Upload your IMS/IQVIA workbook to generate the dashboard.</strong>
             </div>
             <div class="health-score">
               <span>Data health</span>
@@ -268,6 +268,6 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=20260426-ims3"></script>
+    <script src="./app.js?v=20260426-upload-only"></script>
   </body>
 </html>

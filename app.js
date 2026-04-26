@@ -15,7 +15,7 @@ const state = {
   filterValue: "__all__",
   topN: 10,
   activeOnly: false,
-  fileName: "Sample Retail Workbook",
+  fileName: "No workbook loaded",
   charts: {},
   isSampled: false,
   rowLimit: 0,
@@ -30,7 +30,7 @@ const chartPalette = ["#0f766e", "#c2410c", "#2563eb", "#b45309", "#7c3aed", "#1
 document.addEventListener("DOMContentLoaded", () => {
   cacheElements();
   bindEvents();
-  loadSampleData();
+  initializeEmptyState();
   hydrateIcons();
 });
 
@@ -209,38 +209,14 @@ function bindEvents() {
   els.exportPpt.addEventListener("click", exportPpt);
 }
 
-function loadSampleData() {
-  const regions = ["North", "South", "East", "West", "Central"];
-  const channels = ["Enterprise", "Mid-market", "Online", "Partner"];
-  const products = ["Atlas", "Nimbus", "Pulse", "Forge"];
-  const rows = [];
-  for (let i = 0; i < 144; i += 1) {
-    const date = new Date(2025, i % 12, 1 + ((i * 5) % 26));
-    const region = regions[i % regions.length];
-    const channel = channels[(i + 1) % channels.length];
-    const product = products[(i + 2) % products.length];
-    const orders = 28 + ((i * 7) % 74);
-    const revenue = Math.round(orders * (180 + ((i * 13) % 240)) + (i % 5) * 1400);
-    const cost = Math.round(revenue * (0.48 + ((i % 9) * 0.018)));
-    const satisfaction = Number((78 + ((i * 3) % 19) + (i % 4) * 0.4).toFixed(1));
-    rows.push({
-      Date: localDateKey(date),
-      Region: region,
-      Channel: channel,
-      Product: product,
-      Revenue: revenue,
-      Cost: cost,
-      Profit: revenue - cost,
-      Orders: orders,
-      Satisfaction: satisfaction
-    });
-  }
-
-  state.workbook = { "Retail sample": rows };
-  state.sheetNames = ["Retail sample"];
-  state.selectedSheet = "Retail sample";
-  state.fileName = "Sample Retail Workbook";
-  setRows(rows);
+function initializeEmptyState() {
+  state.workbook = { "Upload workbook": [] };
+  state.sheetNames = ["Upload workbook"];
+  state.selectedSheet = "Upload workbook";
+  state.fileName = "No workbook loaded";
+  state.isSampled = false;
+  state.rowLimit = 0;
+  setRows([]);
 }
 
 async function handleFile(file) {
