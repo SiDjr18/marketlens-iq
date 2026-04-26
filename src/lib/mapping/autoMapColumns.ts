@@ -7,6 +7,22 @@ type AutoMapResult = {
   confidence: MappingConfidence;
 };
 
+const canonicalColumns: Partial<Record<PharmaField, string>> = {
+  brand: "MarketLens Brand",
+  company: "MarketLens Company",
+  therapy: "MarketLens Therapy",
+  molecule: "MarketLens Molecule",
+  marketType: "MarketLens Market Type",
+  companyType: "MarketLens Company Type",
+  productType: "MarketLens Product Type",
+  valueSales: "MarketLens Value Sales",
+  units: "MarketLens Units",
+  volume: "MarketLens Volume",
+  mat: "MarketLens MAT Sales",
+  month: "MarketLens Month",
+  pack: "MarketLens Pack"
+};
+
 function scoreColumn(field: PharmaField, column: string): number {
   const key = normalizeKey(column);
   const aliases = mappingAliases[field];
@@ -53,7 +69,18 @@ export function autoMapColumns(columns: string[], rows: RawRow[] = []): AutoMapR
   const mapping: FieldMapping = {};
   const confidence: MappingConfidence = {};
 
+  (Object.keys(canonicalColumns) as PharmaField[]).forEach((field) => {
+    const canonical = canonicalColumns[field];
+    const column = columns.find((candidate) => normalizeKey(candidate) === normalizeKey(canonical));
+    if (column) {
+      mapping[field] = column;
+      confidence[field] = 100;
+      used.add(column);
+    }
+  });
+
   (Object.keys(mappingAliases) as PharmaField[]).forEach((field) => {
+    if (mapping[field]) return;
     const candidates = columns
       .map((column) => ({ column, score: scoreColumn(field, column) }))
       .filter((candidate) => candidate.score >= 58 && !used.has(candidate.column))

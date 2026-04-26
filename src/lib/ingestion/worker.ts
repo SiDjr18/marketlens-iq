@@ -89,7 +89,7 @@ async function parseXlsx(file: File) {
       const tableRows = await readSheetRowsStreaming(file, entries.get(sheet.path) as ZipEntry, sharedStrings, (count) => {
         if (count % 1000 === 0) self.postMessage({ type: "progress", rowsProcessed: totalRows + count, message: `Streaming ${sheet.name}` });
       });
-      const objects = tableToObjects(tableRows);
+      const objects = withImsReferenceFields(tableToObjects(tableRows));
       tables[sheet.name] = objects;
       totalRows += objects.length;
     }
@@ -241,6 +241,78 @@ function tableToObjects(table: unknown[][]): RawRow[] {
       record[header] = coerceCell(row[index]);
     });
     return record;
+  });
+}
+
+function withImsReferenceFields(rows: RawRow[]): RawRow[] {
+  if (!rows.length) return rows;
+  const headers = Object.keys(rows[0]);
+  const normalizedHeaders = new Map(headers.map((header) => [normalize(header), header]));
+  const hasImsCore =
+    normalizedHeaders.has("brands") &&
+    (normalizedHeaders.has("company") || normalizedHeaders.has("manufactdesc")) &&
+    (normalizedHeaders.has("supergroup") || normalizedHeaders.has("group")) &&
+    normalizedHeaders.has("acutechronic");
+  if (!hasImsCore) return rows;
+
+  const latestYear = latestYearFromHeaders(headers) ?? "25";
+  const latestMonth = latestMonthFromHeaders(headers, latestYear) ?? "MAY";
+  const valueMat = findHeader(headers, [`MAT ${latestMonth}'${latestYear}`], ["unit", "qty", "cp", "ni24months"]);
+  const valueMonth = findHeader(headers, [`MONTH ${latestMonth}'${latestYear}`], ["unit", "qty", "cp", "ni24months"]);
+  const unitMat = findHeader(headers, [`UNIT MAT ${latestMonth}'${latestYear}`]);
+  const volumeMat = findHeader(headers, [`QTY MAT ${latestMonth}'${latestYear}`]);
+
+  const brand = normalizedHeaders.get("brands");
+  const company = normalizedHeaders.get("company") || normalizedHeaders.get("manufactdesc");
+  const therapy = normalizedHeaders.get("supergroup") || normalizedHeaders.get("group") || normalizedHeaders.get("subgroup");
+  const molecule = normalizedHeaders.get("moleculedesc") || normalizedHeaders.get("nfcdesc") || normalizedHeaders.get("nfc");
+  const marketType = normalizedHeaders.get("acutechronic");
+  const companyType = normalizedHeaders.get("indianmnc");
+  const productType = normalizedHeaders.get("plaincombination") || normalizedHeaders.get("plain");
+  const pack = normalizedHeaders.get("packdesc");
+  const period = `${latestMonth.slice(0, 1)}${latestMonth.slice(1).toLowerCase()}'${latestYear}`;
+
+  return rows.map((row) => ({
+    ...row,
+    "MarketLens Brand": brand ? row[brand] : "",
+    "MarketLens Company": company ? row[company] : "",
+    "MarketLens Therapy": therapy ? row[therapy] : "",
+    "MarketLens Molecule": molecule ? row[molecule] : "",
+    "MarketLens Market Type": marketType ? row[marketType] : "",
+    "MarketLens Company Type": companyType ? row[companyType] : "",
+    "MarketLens Product Type": productType ? row[productType] : "",
+    "MarketLens Value Sales": valueMat ? row[valueMat] : valueMonth ? row[valueMonth] : "",
+    "MarketLens Monthly Sales": valueMonth ? row[valueMonth] : "",
+    "MarketLens MAT Sales": valueMat ? row[valueMat] : "",
+    "MarketLens Units": unitMat ? row[unitMat] : "",
+    "MarketLens Volume": volumeMat ? row[volumeMat] : "",
+    "MarketLens Month": period,
+    "MarketLens Pack": pack ? row[pack] : ""
+  }));
+}
+
+function latestYearFromHeaders(headers: string[]): string | null {
+  const years = headers
+    .map((header) => header.match(/'(2\d)\b/))
+    .filter(Boolean)
+    .map((match) => Number(match?.[1]));
+  return years.length ? String(Math.max(...years)).padStart(2, "0") : null;
+}
+
+function latestMonthFromHeaders(headers: string[], year: string): string | null {
+  const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  const matching = headers
+    .map((header) => header.toUpperCase().match(new RegExp(`\\b(${months.join("|")})'${year}\\b`))?.[1])
+    .filter(Boolean) as string[];
+  if (!matching.length) return null;
+  return matching.sort((a, b) => months.indexOf(a) - months.indexOf(b))[matching.length - 1];
+}
+
+function findHeader(headers: string[], exactPatterns: string[], exclude: string[] = []): string | undefined {
+  return headers.find((header) => {
+    const key = normalize(header);
+    if (exclude.some((item) => key.includes(normalize(item)))) return false;
+    return exactPatterns.some((pattern) => key === normalize(pattern));
   });
 }
 
