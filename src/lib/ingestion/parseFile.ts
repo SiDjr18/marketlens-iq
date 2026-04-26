@@ -16,13 +16,13 @@ async function parseCsvInWorker(file: File, delimiter: string | undefined, onPro
   return new Promise<{ rows: RawRow[]; errors: string[] }>((resolve) => {
     const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
     worker.onmessage = (event: MessageEvent) => {
-      const data = event.data as { type: string; rowsProcessed?: number; rows?: RawRow[]; errors?: string[]; error?: string };
+      const data = event.data as { type: string; rowsProcessed?: number; rows?: RawRow[]; errors?: string[]; error?: string; message?: string };
       if (data.type === "progress") {
         onProgress?.({
           phase: "parsing",
           percent: 50,
           rowsProcessed: data.rowsProcessed ?? 0,
-          message: `${(data.rowsProcessed ?? 0).toLocaleString("en-IN")} rows processed`
+          message: data.message ?? `${(data.rowsProcessed ?? 0).toLocaleString("en-IN")} rows processed`
         });
       }
       if (data.type === "complete") {
@@ -38,7 +38,46 @@ async function parseCsvInWorker(file: File, delimiter: string | undefined, onPro
       worker.terminate();
       resolve(parseCsv(file, delimiter));
     };
-    worker.postMessage({ file, delimiter });
+    worker.postMessage({ file, delimiter, kind: "csv" });
+  });
+}
+
+async function parseXlsxInWorker(file: File, onProgress?: ProgressCallback) {
+  if (!window.Worker) return parseExcel(file);
+  return new Promise<{ tables: Record<string, RawRow[]>; sheetNames: string[]; errors: string[] }>((resolve) => {
+    const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = (event: MessageEvent) => {
+      const data = event.data as {
+        type: string;
+        rowsProcessed?: number;
+        tables?: Record<string, RawRow[]>;
+        sheetNames?: string[];
+        errors?: string[];
+        error?: string;
+        message?: string;
+      };
+      if (data.type === "progress") {
+        onProgress?.({
+          phase: "parsing",
+          percent: 45,
+          rowsProcessed: data.rowsProcessed ?? 0,
+          message: data.message ?? "Streaming Excel workbook"
+        });
+      }
+      if (data.type === "complete-xlsx") {
+        worker.terminate();
+        resolve({ tables: data.tables ?? {}, sheetNames: data.sheetNames ?? [], errors: data.errors ?? [] });
+      }
+      if (data.type === "error") {
+        worker.terminate();
+        resolve({ tables: {}, sheetNames: [], errors: [data.error ?? "Worker XLSX parsing failed."] });
+      }
+    };
+    worker.onerror = () => {
+      worker.terminate();
+      resolve(parseExcel(file));
+    };
+    worker.postMessage({ file, kind: "xlsx" });
   });
 }
 
@@ -58,7 +97,7 @@ export async function parseFile(file: File, onProgress?: ProgressCallback): Prom
     errors = parsed.errors;
   } else if (extension === "xlsx" || extension === "xls") {
     onProgress?.({ phase: "parsing", percent: 30, rowsProcessed: 0, message: "Parsing workbook sheets" });
-    const parsed = await parseExcel(file);
+    const parsed = extension === "xlsx" ? await parseXlsxInWorker(file, onProgress) : await parseExcel(file);
     tables = parsed.tables;
     sheetNames = parsed.sheetNames;
     errors = parsed.errors;

@@ -1,6 +1,6 @@
 import { mappingAliases } from "./mappingRules";
-import { normalizeKey } from "../utils/formatters";
-import type { FieldMapping, MappingConfidence, PharmaField } from "../utils/types";
+import { normalizeKey, toNumber } from "../utils/formatters";
+import type { FieldMapping, MappingConfidence, PharmaField, RawRow } from "../utils/types";
 
 type AutoMapResult = {
   mapping: FieldMapping;
@@ -22,7 +22,33 @@ function scoreColumn(field: PharmaField, column: string): number {
   return best;
 }
 
-export function autoMapColumns(columns: string[]): AutoMapResult {
+function numericCandidates(columns: string[], rows: RawRow[], used: Set<string>) {
+  const sample = rows.slice(0, Math.min(rows.length, 1200));
+  return columns
+    .filter((column) => !used.has(column))
+    .filter((column) => !/^(pfc|ind|index|row|prodlnch|launch|year|month|date)$/i.test(normalizeKey(column)))
+    .map((column) => {
+      let checked = 0;
+      let numeric = 0;
+      let sum = 0;
+      sample.forEach((row) => {
+        const raw = row[column];
+        if (raw === undefined || raw === null || raw === "") return;
+        checked += 1;
+        const number = toNumber(raw);
+        if (number !== null) {
+          numeric += 1;
+          sum += Math.abs(number);
+        }
+      });
+      const density = checked ? numeric / checked : 0;
+      return { column, density, sum, score: density * 100 + Math.log10(sum + 1) };
+    })
+    .filter((candidate) => candidate.density >= 0.65)
+    .sort((a, b) => b.score - a.score);
+}
+
+export function autoMapColumns(columns: string[], rows: RawRow[] = []): AutoMapResult {
   const used = new Set<string>();
   const mapping: FieldMapping = {};
   const confidence: MappingConfidence = {};
@@ -40,6 +66,19 @@ export function autoMapColumns(columns: string[]): AutoMapResult {
       used.add(best.column);
     }
   });
+
+  if (rows.length) {
+    const numeric = numericCandidates(columns, rows, used);
+    const fallbackOrder: PharmaField[] = ["valueSales", "mat", "units", "volume"];
+    fallbackOrder.forEach((field, index) => {
+      if (mapping[field]) return;
+      const candidate = numeric.find((item) => !used.has(item.column));
+      if (!candidate) return;
+      mapping[field] = candidate.column;
+      confidence[field] = index === 0 ? 68 : 58;
+      used.add(candidate.column);
+    });
+  }
 
   return { mapping, confidence };
 }

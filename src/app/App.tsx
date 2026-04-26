@@ -136,7 +136,7 @@ export default function App() {
     setActiveSheet(parsed.activeSheet);
     const rows = parsed.tables[parsed.activeSheet] ?? [];
     const detectedColumns = getColumns(rows);
-    const auto = autoMapColumns(detectedColumns);
+    const auto = autoMapColumns(detectedColumns, rows);
     const nextHealth = validateMapping(rows, detectedColumns, auto.mapping);
     setMapping(auto.mapping);
     setMappingConfidence(auto.confidence);
@@ -149,7 +149,7 @@ export default function App() {
   function loadDemo() {
     const rows = demoRows();
     const detectedColumns = getColumns(rows);
-    const auto = autoMapColumns(detectedColumns);
+    const auto = autoMapColumns(detectedColumns, rows);
     setDataset({
       tables: { "Demo Pharma": rows },
       sheetNames: ["Demo Pharma"],
@@ -168,7 +168,7 @@ export default function App() {
     if (!dataset) return;
     const rows = dataset.tables[sheet] ?? [];
     const detectedColumns = getColumns(rows);
-    const auto = autoMapColumns(detectedColumns);
+    const auto = autoMapColumns(detectedColumns, rows);
     const nextHealth = validateMapping(rows, detectedColumns, auto.mapping);
     setActiveSheet(sheet);
     setMapping(auto.mapping);
