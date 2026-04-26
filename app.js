@@ -65,6 +65,9 @@ function cacheElements() {
     "donutMeta",
     "insightMeta",
     "insightList",
+    "strategyTitle",
+    "strategyMeta",
+    "strategyGrid",
     "tableMeta",
     "previewTable",
     "dashboardSurface",
@@ -252,6 +255,22 @@ async function handleFile(file) {
       state.selectedSheet = file.name;
       state.isSampled = false;
       state.rowLimit = 0;
+    } else if (ext === "json") {
+      const text = await file.text();
+      const rows = parseJsonData(text);
+      state.workbook = { [file.name]: rows };
+      state.sheetNames = [file.name];
+      state.selectedSheet = file.name;
+      state.isSampled = false;
+      state.rowLimit = 0;
+    } else if (ext === "sql") {
+      const text = await file.text();
+      const parsed = parseSqlDump(text);
+      state.workbook = parsed.tables;
+      state.sheetNames = parsed.sheetNames;
+      state.selectedSheet = parsed.sheetNames[0];
+      state.isSampled = parsed.isSampled;
+      state.rowLimit = parsed.rowLimit;
     } else {
       const rowLimit = getWorkbookRowLimit(file);
       const largeMode = shouldUseLargeWorkbookMode(file);
@@ -340,7 +359,13 @@ function enrichRowsForAnalysis(rows) {
   if (!rows.length) return rows;
 
   const columns = getColumns(rows);
-  if (!looksLikeImsWorkbook(columns)) return rows;
+  if (!looksLikeImsWorkbook(columns)) {
+    state.domain = detectBusinessDomain(columns);
+    if (state.domain !== "generic") {
+      state.analysisNotes.push(`${titleCase(state.domain)} data structure detected from uploaded columns.`);
+    }
+    return rows;
+  }
 
   state.domain = "ims";
   const descriptorColumns = new Set(getImsDescriptorColumns(columns));
@@ -380,6 +405,23 @@ function looksLikeImsWorkbook(columns) {
   const normalized = new Set(columns.map(normalize));
   const imsHits = ["packdesc", "brands", "manufactdesc", "acutechronic", "nfc"].filter((name) => normalized.has(name)).length;
   return imsHits >= 3;
+}
+
+function detectBusinessDomain(columns) {
+  const joined = columns.map(normalize).join(" ");
+  const scores = {
+    finance: scoreTerms(joined, ["budget", "spend", "cost", "margin", "profit", "expense", "actual", "variance", "forecast"]),
+    sales: scoreTerms(joined, ["sales", "revenue", "orders", "pipeline", "territory", "account", "customer", "quota", "conversion"]),
+    marketing: scoreTerms(joined, ["campaign", "brand", "channel", "impressions", "clicks", "leads", "ctr", "cpc", "creative"]),
+    supply: scoreTerms(joined, ["inventory", "stock", "warehouse", "sku", "demand", "supplier", "shipment", "fillrate", "leadtime"]),
+    presales: scoreTerms(joined, ["opportunity", "lead", "prospect", "deal", "stage", "proposal", "pipeline", "probability"])
+  };
+  const best = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
+  return best && best[1] >= 2 ? best[0] : "generic";
+}
+
+function scoreTerms(text, terms) {
+  return terms.reduce((score, term) => score + (text.includes(term) ? 1 : 0), 0);
 }
 
 function getImsDescriptorColumns(columns) {
@@ -458,9 +500,25 @@ function inferSelections(force) {
   const date = state.profile.date;
   const metricRank = state.domain === "ims"
     ? ["imstotal", "imslatest", "imsaverage", "imspeak", "revenue", "sales", "value", "total"]
+    : state.domain === "finance"
+      ? ["profit", "margin", "revenue", "budget", "actual", "spend", "cost", "variance"]
+    : state.domain === "marketing"
+      ? ["leads", "conversion", "revenue", "sales", "clicks", "impressions", "spend"]
+    : state.domain === "sales"
+      ? ["revenue", "sales", "orders", "pipeline", "quota", "conversion"]
+    : state.domain === "supply"
+      ? ["demand", "orders", "stock", "inventory", "quantity", "fillrate", "leadtime"]
     : ["revenue", "sales", "amount", "profit", "total", "value", "orders", "cost"];
   const categoryRank = state.domain === "ims"
     ? ["brands", "manufactdesc", "group", "packdesc", "acutechronic", "nfc", "indianmnc", "prodlnch"]
+    : state.domain === "finance"
+      ? ["department", "region", "category", "costcenter", "businessunit"]
+    : state.domain === "marketing"
+      ? ["brand", "campaign", "channel", "segment", "product", "region"]
+    : state.domain === "sales"
+      ? ["region", "territory", "account", "customer", "salesrep", "product"]
+    : state.domain === "supply"
+      ? ["sku", "product", "warehouse", "supplier", "region", "pack"]
     : ["region", "segment", "category", "product", "channel", "market", "department", "team"];
   const metric = pickByRank(numeric, metricRank) || numeric[0] || state.columns[0] || "";
   const dimension = pickByRank(category, categoryRank) || bestCategory(category) || state.columns.find((col) => col !== metric) || "";
@@ -507,6 +565,16 @@ function getVerticalPreset(vertical) {
       label: "Sales",
       metricRank: state.domain === "ims" ? ["imslatest", "imstotal", "imspeak"] : ["revenue", "sales", "orders", "pipeline"],
       dimensionRank: state.domain === "ims" ? ["manufactdesc", "brands", "group", "packdesc"] : ["region", "salesrep", "account", "territory", "product"]
+    },
+    supply: {
+      label: "Supply Chain",
+      metricRank: state.domain === "ims" ? ["imspeak", "imsaverage", "imstotal", "imslatest"] : ["orders", "demand", "sales", "quantity", "stock"],
+      dimensionRank: state.domain === "ims" ? ["packdesc", "brands", "manufactdesc", "nfc"] : ["product", "sku", "warehouse", "region", "vendor"]
+    },
+    strategy: {
+      label: "Brand Strategy",
+      metricRank: state.domain === "ims" ? ["imstotal", "imslatest", "imspeak", "imsactiveperiods"] : ["revenue", "sales", "profit", "value"],
+      dimensionRank: state.domain === "ims" ? ["brands", "moleculedesc", "group", "manufactdesc"] : ["brand", "product", "category", "segment"]
     }
   };
   return presets[vertical] || presets.executive;
@@ -603,6 +671,7 @@ function renderDashboard() {
   renderKpis();
   renderCharts();
   renderInsights();
+  renderStrategyPlan();
   renderTablePreview();
   hydrateIcons();
 }
@@ -948,6 +1017,102 @@ function renderInsights() {
     li.textContent = insight;
     els.insightList.appendChild(li);
   });
+}
+
+function renderStrategyPlan() {
+  const plan = buildStrategyPlan();
+  els.strategyTitle.textContent = plan.title;
+  els.strategyMeta.textContent = plan.meta;
+  els.strategyGrid.innerHTML = "";
+  plan.cards.forEach((card) => {
+    const item = document.createElement("section");
+    item.className = "strategy-card";
+    item.innerHTML = `
+      <h3>${escapeHtml(card.title)}</h3>
+      <p>${card.body}</p>
+    `;
+    els.strategyGrid.appendChild(item);
+  });
+}
+
+function buildStrategyPlan() {
+  const rows = getActiveRows();
+  const metric = state.metric;
+  const dimension = state.dimension;
+  const grouped = groupBySum(rows, dimension, metric).sort((a, b) => b.value - a.value);
+  const total = sum(grouped.map((item) => item.value));
+  const top = grouped[0] || { name: "No leader", value: 0 };
+  const second = grouped[1] || top;
+  const bottom = grouped[grouped.length - 1] || { name: "No laggard", value: 0 };
+  const topShare = total ? (top.value / total) * 100 : 0;
+  const top3Share = total ? (sum(grouped.slice(0, 3).map((item) => item.value)) / total) * 100 : 0;
+  const integrity = getDataIntegrityStatement(rows);
+  const label = getVerticalPreset(state.vertical).label || "Executive";
+  const common = {
+    leader: escapeHtml(top.name),
+    challenger: escapeHtml(second.name),
+    laggard: escapeHtml(bottom.name),
+    metric: escapeHtml(titleCase(metric)),
+    dimension: escapeHtml(titleCase(dimension)),
+    topShare: formatNumber(topShare),
+    top3Share: formatNumber(top3Share),
+    total: escapeHtml(formatMetric(total, metric))
+  };
+
+  const playbooks = {
+    executive: [
+      ["Where to play", `<strong>${common.leader}</strong> leads ${common.dimension} with ${common.topShare}% share of ${common.metric}. Prioritize leadership review around the top contributors before expanding spend.`],
+      ["How to win", `Use <strong>${common.challenger}</strong> as the challenger benchmark and compare route-to-market, price, pack, and channel execution against the leader.`],
+      ["Governance", `${integrity} Track concentration (${common.top3Share}% in top 3) before making portfolio-level commitments.`]
+    ],
+    marketing: [
+      ["Brand plan", `Build the core brand plan around <strong>${common.leader}</strong>: positioning, priority segments, message architecture, objection handling, and evidence calendar.`],
+      ["Campaign design", `Allocate campaigns across awareness, conversion, and retention. Use <strong>${common.laggard}</strong> for turnaround tests only after message-market fit is validated.`],
+      ["Measurement", `Use ${common.metric}, active periods, contribution share, and gap-to-leader as monthly brand-plan KPIs.`]
+    ],
+    strategy: [
+      ["Portfolio choices", `Classify brands into grow, defend, fix, and deprioritize. <strong>${common.leader}</strong> is a defend/grow candidate; <strong>${common.laggard}</strong> needs diagnosis.`],
+      ["Molecule strategy", `For molecule/company planning, compare leader share, challenger intensity, and pack/form concentration before selecting launch or expansion plays.`],
+      ["End-to-end plan", `Translate the opportunity into brand objective, segment target, channel mix, investment ask, field execution, supply readiness, and review cadence.`]
+    ],
+    presales: [
+      ["Opportunity map", `<strong>${common.leader}</strong> and adjacent high-share pockets are the strongest BD proof points. Use low-share but active pockets as whitespace stories.`],
+      ["Account narrative", `Frame BD pitches around market size (${common.total}), concentration (${common.top3Share}%), and clear gaps versus the leader.`],
+      ["Pipeline action", `Create account lists by ${common.dimension}, rank by ${common.metric}, and prioritize challenger segments for partnership conversations.`]
+    ],
+    finance: [
+      ["Budget allocation", `Use top-share concentration to allocate base budget to proven contributors and reserve test budget for high-potential challengers.`],
+      ["Scenario model", `Model three cases: defend leader, accelerate challenger, and fix laggard. Tie spend gates to incremental ${common.metric}.`],
+      ["Controls", `${integrity} Budget decisions should be blocked if analysis is sampled and full-data validation is required.`]
+    ],
+    sales: [
+      ["Gap diagnosis", `Use <strong>${common.leader}</strong> as the execution benchmark and <strong>${common.laggard}</strong> as the first gap review candidate.`],
+      ["Field priorities", `Translate the leaderboard into territory/account priorities, call focus, objection scripts, and pack-level execution checks.`],
+      ["Cadence", `Review latest-period trend, active periods, and rank movement monthly with sales managers.`]
+    ],
+    supply: [
+      ["Demand signal", `<strong>${common.leader}</strong> is the primary demand signal for supply readiness, inventory coverage, and service-level planning.`],
+      ["Pack risk", `Monitor pack/product concentration and laggard movement to avoid overstocking weak pockets and under-serving growth pockets.`],
+      ["S&OP linkage", `Feed ${common.metric} trend, active IMS periods, and leader/challenger movement into S&OP and production allocation discussions.`]
+    ],
+    custom: [
+      ["Selected view", `The selected view ranks ${common.dimension} by ${common.metric}. <strong>${common.leader}</strong> is the current leader.`],
+      ["Action logic", `Compare leader, challenger, and laggard to define where to defend, grow, test, or exit.`],
+      ["Integrity", integrity]
+    ]
+  };
+
+  return {
+    title: `${label} strategy plan`,
+    meta: `${formatNumber(rows.length)} rows, ${common.metric} by ${common.dimension}`,
+    cards: (playbooks[state.vertical] || playbooks.executive).map(([title, body]) => ({ title, body }))
+  };
+}
+
+function getDataIntegrityStatement(rows) {
+  if (!rows.length) return "No row-level evidence is available for this view.";
+  if (state.isSampled) return `This is a sampled browser analysis of ${formatNumber(rows.length)} rows; do not present it as full-market truth without full-data processing.`;
+  return `This view is based on ${formatNumber(rows.length)} loaded rows from the selected criteria.`;
 }
 
 function buildInsights() {
@@ -1632,6 +1797,225 @@ function parseDelimited(text, delimiter) {
     rows.push(row);
   }
   return rows;
+}
+
+function parseJsonData(text) {
+  const data = JSON.parse(text);
+  if (Array.isArray(data)) return normalizeJsonRows(data);
+  if (Array.isArray(data.rows)) return normalizeJsonRows(data.rows);
+  if (Array.isArray(data.data)) return normalizeJsonRows(data.data);
+  const firstArrayKey = Object.keys(data).find((key) => Array.isArray(data[key]));
+  if (firstArrayKey) return normalizeJsonRows(data[firstArrayKey]);
+  return [flattenObject(data)];
+}
+
+function normalizeJsonRows(items) {
+  return items.map((item) => {
+    if (item && typeof item === "object" && !Array.isArray(item)) return flattenObject(item);
+    return { Value: item };
+  });
+}
+
+function flattenObject(input, prefix = "", output = {}) {
+  Object.entries(input || {}).forEach(([key, value]) => {
+    const name = prefix ? `${prefix}.${key}` : key;
+    if (value && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date)) {
+      flattenObject(value, name, output);
+    } else {
+      output[name] = Array.isArray(value) ? value.join(", ") : coerceCell(value);
+    }
+  });
+  return output;
+}
+
+function parseSqlDump(text) {
+  const maxRows = 50000;
+  const tables = {};
+  const schemas = parseSqlSchemas(text);
+  const insertPattern = /insert\s+into\s+[`"\[]?([\w.\- ]+)[`"\]]?\s*(?:\(([^)]*)\))?\s*values\s*([\s\S]*?);/gi;
+  let match;
+  let totalRows = 0;
+  let sampled = false;
+
+  while ((match = insertPattern.exec(text))) {
+    const tableName = cleanSqlIdentifier(match[1]) || "SQL data";
+    const explicitColumns = match[2] ? splitSqlCsv(match[2]).map(cleanSqlIdentifier) : null;
+    const valuesBlock = match[3];
+    const tuples = extractSqlTuples(valuesBlock);
+    if (!tables[tableName]) tables[tableName] = [];
+    tuples.forEach((tuple) => {
+      if (totalRows >= maxRows) {
+        sampled = true;
+        return;
+      }
+      const values = splitSqlCsv(tuple).map(sqlValue);
+      const columns = explicitColumns || schemas[tableName] || values.map((_, index) => `Column ${index + 1}`);
+      const row = {};
+      columns.forEach((column, index) => {
+        row[column || `Column ${index + 1}`] = values[index] ?? "";
+      });
+      tables[tableName].push(row);
+      totalRows += 1;
+    });
+  }
+
+  if (!Object.keys(tables).length) {
+    const rows = parseDelimited(text, detectDelimiter(text));
+    tables["SQL/text data"] = rows;
+  }
+
+  return {
+    tables,
+    sheetNames: Object.keys(tables),
+    isSampled: sampled,
+    rowLimit: sampled ? maxRows : 0
+  };
+}
+
+function parseSqlSchemas(text) {
+  const schemas = {};
+  const createPattern = /create\s+table\s+[`"\[]?([\w.\- ]+)[`"\]]?\s*\(([\s\S]*?)\);/gi;
+  let match;
+  while ((match = createPattern.exec(text))) {
+    const tableName = cleanSqlIdentifier(match[1]);
+    const columns = [];
+    splitSqlDefinitions(match[2]).forEach((definition) => {
+      const first = definition.trim().match(/^[`"\[]?([\w.\- ]+)[`"\]]?/);
+      if (!first) return;
+      const column = cleanSqlIdentifier(first[1]);
+      if (!/^(primary|foreign|unique|constraint|key|index|check)$/i.test(column)) columns.push(column);
+    });
+    if (columns.length) schemas[tableName] = columns;
+  }
+  return schemas;
+}
+
+function splitSqlDefinitions(text) {
+  const parts = [];
+  let current = "";
+  let depth = 0;
+  let quote = "";
+  for (const char of text) {
+    if (quote) {
+      current += char;
+      if (char === quote) quote = "";
+      continue;
+    }
+    if (char === "'" || char === "\"" || char === "`") {
+      quote = char;
+      current += char;
+      continue;
+    }
+    if (char === "(") depth += 1;
+    if (char === ")") depth -= 1;
+    if (char === "," && depth === 0) {
+      parts.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  if (current.trim()) parts.push(current);
+  return parts;
+}
+
+function extractSqlTuples(valuesBlock) {
+  const tuples = [];
+  let depth = 0;
+  let quote = "";
+  let current = "";
+  for (let i = 0; i < valuesBlock.length; i += 1) {
+    const char = valuesBlock[i];
+    const next = valuesBlock[i + 1];
+    if (quote) {
+      if (char === "\\" && next) {
+        current += char + next;
+        i += 1;
+        continue;
+      }
+      if (char === quote && next === quote) {
+        current += char + next;
+        i += 1;
+        continue;
+      }
+      if (char === quote) quote = "";
+      current += char;
+      continue;
+    }
+    if (char === "'" || char === "\"") {
+      quote = char;
+      current += char;
+      continue;
+    }
+    if (char === "(") {
+      if (depth > 0) current += char;
+      depth += 1;
+      continue;
+    }
+    if (char === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        tuples.push(current);
+        current = "";
+      } else {
+        current += char;
+      }
+      continue;
+    }
+    if (depth > 0) current += char;
+  }
+  return tuples;
+}
+
+function splitSqlCsv(text) {
+  const output = [];
+  let current = "";
+  let quote = "";
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    const next = text[i + 1];
+    if (quote) {
+      if (char === "\\" && next) {
+        current += next;
+        i += 1;
+        continue;
+      }
+      if (char === quote && next === quote) {
+        current += quote;
+        i += 1;
+        continue;
+      }
+      if (char === quote) {
+        quote = "";
+      } else {
+        current += char;
+      }
+      continue;
+    }
+    if (char === "'" || char === "\"" || char === "`") {
+      quote = char;
+      continue;
+    }
+    if (char === ",") {
+      output.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  output.push(current.trim());
+  return output;
+}
+
+function sqlValue(value) {
+  const trimmed = String(value ?? "").trim();
+  if (/^null$/i.test(trimmed)) return "";
+  if (/^(true|false)$/i.test(trimmed)) return /^true$/i.test(trimmed);
+  return coerceCell(trimmed);
+}
+
+function cleanSqlIdentifier(value) {
+  return String(value || "").replace(/^[`"\[]|[`"\]]$/g, "").trim();
 }
 
 function parseDelimitedLine(line, delimiter) {

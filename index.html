@@ -28,9 +28,9 @@
             <i data-lucide="file-up" aria-hidden="true"></i>
             <div>
               <strong>Import workbook</strong>
-              <span>XLSX, XLS, CSV, or TSV</span>
+              <span>XLSX, XLS, CSV, TSV, JSON, or SQL</span>
             </div>
-            <input id="fileInput" type="file" accept=".xlsx,.xls,.csv,.tsv" />
+            <input id="fileInput" type="file" accept=".xlsx,.xls,.csv,.tsv,.json,.sql" />
           </div>
           <div class="file-meta">
             <span id="fileName">Sample dataset loaded</span>
@@ -48,6 +48,8 @@
               <option value="presales">Pre-sales & BD</option>
               <option value="finance">Finance</option>
               <option value="sales">Sales</option>
+              <option value="supply">Supply Chain</option>
+              <option value="strategy">Brand Strategy</option>
               <option value="custom">Custom</option>
             </select>
           </label>
@@ -231,6 +233,17 @@
                 <span class="badge">AI-style</span>
               </div>
               <ul id="insightList" class="insight-list"></ul>
+            </article>
+
+            <article class="insight-panel">
+              <div class="chart-head">
+                <div>
+                  <h2 id="strategyTitle">Strategy plan</h2>
+                  <p id="strategyMeta">Department-ready recommendations</p>
+                </div>
+                <span class="badge">Plan</span>
+              </div>
+              <div id="strategyGrid" class="strategy-grid"></div>
             </article>
 
             <article class="table-panel">

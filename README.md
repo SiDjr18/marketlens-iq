@@ -4,7 +4,7 @@ MarketLens IQ is a browser-based Excel-to-dashboard studio for large IMS/IQVIA-s
 
 ## Highlights
 
-- Upload `.xlsx`, `.xls`, `.csv`, or `.tsv`
+- Upload `.xlsx`, `.xls`, `.csv`, `.tsv`, `.json`, or `.sql`
 - Large `.xlsx` streaming mode for 250-500 MB+ IMS/IQVIA files
 - Auto-detect IMS/pharma matrix files with fields such as `BRANDS`, `PACK_DESC`, `MANUFACT. DESC`, `GROUP`, `ACUTE_CHRONIC`, and `NFC`
 - Derived IMS metrics: `IMS Total`, `IMS Latest`, `IMS Average`, `IMS Peak`, `IMS Active Periods`
@@ -17,6 +17,19 @@ MarketLens IQ is a browser-based Excel-to-dashboard studio for large IMS/IQVIA-s
   - Custom: manual metric/dimension/date selection
 - Criteria controls for segment filtering, ranking depth, and active IMS rows
 - Exports respect the selected dashboard view and criteria
+
+## Data Inputs
+
+MarketLens IQ supports common business data exports:
+
+- Excel workbooks: `.xlsx`, `.xls`
+- Flat files: `.csv`, `.tsv`
+- JSON arrays or objects: `.json`
+- SQL dumps with `CREATE TABLE` and `INSERT INTO ... VALUES`: `.sql`
+
+The app profiles the uploaded columns, classifies the likely business domain, selects useful metrics/dimensions, and changes the dashboard and strategy plan accordingly.
+
+SQL support is designed for exported row data, not live database connections. For direct database connectivity, use the enterprise backend pattern described below.
 
 ## Run Locally
 
@@ -46,9 +59,23 @@ For the best experience with large files, use a modern Chromium browser because 
 
 For IMS/IQVIA-like `.xlsx` files, and for workbooks above roughly `50 MB`, the app switches to large workbook mode. It reads workbook metadata and samples the first analyzable rows without expanding the entire Excel file into memory. This makes 100-500 MB IMS/IQVIA datasets usable in the browser while keeping the dashboard responsive.
 
-Large mode is intentionally sample-based. For enterprise production use where every row must be processed, connect the same dashboard UI to a server-side ETL pipeline or warehouse.
+Large mode is intentionally sample-based in the browser. MarketLens IQ will disclose that status in the dashboard and strategy plan so it never presents sampled analysis as full-market truth. For enterprise production use where every row must be processed, connect the same dashboard UI to a server-side ETL pipeline or warehouse.
 
 The included parser has been tested against an IMS workbook with more than 100,000 rows and 200+ columns. It uses streaming worksheet parsing so the sheet XML is never expanded into one giant browser string.
+
+## Strategy Outputs
+
+The dashboard changes its operating logic by department:
+
+- Executive: portfolio concentration, leadership focus, governance
+- Marketing: brand plan, campaign design, measurement architecture
+- Brand Strategy: where-to-play/how-to-win, molecule strategy, end-to-end plan
+- Pre-sales & BD: opportunity mapping, account narrative, whitespace identification
+- Finance: budget allocation, scenario modelling, investment gates
+- Sales: gap diagnosis, field priorities, review cadence
+- Supply Chain: demand signals, pack risk, S&OP linkage
+
+All recommendations are rule-based and calculated from the selected workbook, metric, dimension, and filter criteria. The app does not use generated facts outside the uploaded data.
 
 ## Tech Stack
 

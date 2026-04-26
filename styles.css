@@ -529,7 +529,7 @@ h2 {
 
 .lower-grid {
   display: grid;
-  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(260px, 0.8fr) minmax(320px, 1fr) minmax(0, 1.2fr);
   gap: 12px;
 }
 
@@ -549,6 +549,34 @@ h2 {
   color: #393731;
   line-height: 1.45;
   font-size: 13px;
+}
+
+.strategy-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.strategy-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: #fbfdfb;
+}
+
+.strategy-card h3 {
+  margin: 0 0 7px;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.strategy-card p {
+  color: #43524f;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.strategy-card strong {
+  color: var(--accent);
 }
 
 .table-wrap {
