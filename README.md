@@ -48,6 +48,8 @@ For IMS/IQVIA-like `.xlsx` files, and for workbooks above roughly `50 MB`, the a
 
 Large mode is intentionally sample-based. For enterprise production use where every row must be processed, connect the same dashboard UI to a server-side ETL pipeline or warehouse.
 
+The included parser has been tested against an IMS workbook with more than 100,000 rows and 200+ columns. It uses streaming worksheet parsing so the sheet XML is never expanded into one giant browser string.
+
 ## Tech Stack
 
 - HTML, CSS, JavaScript
