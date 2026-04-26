@@ -62,19 +62,14 @@ async function parseXlsx(file: File) {
     const relsEntry = entries.get("xl/_rels/workbook.xml.rels");
     if (!workbookEntry || !relsEntry) throw new Error("Workbook metadata is missing.");
 
-    const workbookXml = parseXml(await readZipEntryText(file, workbookEntry));
-    const relsXml = parseXml(await readZipEntryText(file, relsEntry));
-    const relMap = new Map(
-      Array.from(relsXml.querySelectorAll("Relationship")).map((rel) => [rel.getAttribute("Id"), rel.getAttribute("Target")])
-    );
-    const sheets = Array.from(workbookXml.querySelectorAll("sheet"))
-      .map((sheet, index) => {
-        const rid = sheet.getAttribute("r:id") || sheet.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
-        return {
-          name: sheet.getAttribute("name") || `Sheet ${index + 1}`,
-          path: normalizeZipPath("xl", relMap.get(rid) || `worksheets/sheet${index + 1}.xml`)
-        };
-      })
+    const workbookXml = await readZipEntryText(file, workbookEntry);
+    const relsXml = await readZipEntryText(file, relsEntry);
+    const relMap = parseWorkbookRelationships(relsXml);
+    const sheets = parseWorkbookSheets(workbookXml)
+      .map((sheet, index) => ({
+        name: sheet.name || `Sheet ${index + 1}`,
+        path: normalizeZipPath("xl", relMap.get(sheet.rid) || `worksheets/sheet${index + 1}.xml`)
+      }))
       .filter((sheet) => entries.has(sheet.path));
     if (!sheets.length) throw new Error("No readable worksheets found.");
 
@@ -359,15 +354,34 @@ function uniquifyHeaders(headers: string[]): string[] {
   });
 }
 
-function parseXml(xml: string): Document {
-  const parsed = new DOMParser().parseFromString(xml, "application/xml");
-  if (parsed.querySelector("parsererror")) throw new Error("Invalid workbook XML.");
-  return parsed;
-}
-
 function getXmlAttr(attrs: string, name: string): string {
   const match = attrs.match(new RegExp(`\\b${name}="([^"]*)"`, "i"));
   return match ? decodeXmlText(match[1]) : "";
+}
+
+function parseWorkbookRelationships(xml: string): Map<string, string> {
+  const rels = new Map<string, string>();
+  const relationshipPattern = /<Relationship\b([^>]*)\/?>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = relationshipPattern.exec(xml))) {
+    const id = getXmlAttr(match[1], "Id");
+    const target = getXmlAttr(match[1], "Target");
+    if (id && target) rels.set(id, target);
+  }
+  return rels;
+}
+
+function parseWorkbookSheets(xml: string): Array<{ name: string; rid: string }> {
+  const sheets: Array<{ name: string; rid: string }> = [];
+  const sheetPattern = /<sheet\b([^>]*)\/?>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = sheetPattern.exec(xml))) {
+    const attrs = match[1];
+    const name = getXmlAttr(attrs, "name");
+    const rid = getXmlAttr(attrs, "r:id") || getXmlAttr(attrs, "id");
+    if (name || rid) sheets.push({ name, rid });
+  }
+  return sheets;
 }
 
 function decodeXmlText(value: string): string {
