@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>MarketLens IQ - Excel & IMS Dashboard Studio</title>
-    <link rel="stylesheet" href="./styles.css?v=20260426-console-ui" />
+    <link rel="stylesheet" href="./styles.css?v=20260426-full-engine" />
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -36,6 +36,14 @@
             <span id="fileName">No workbook loaded</span>
             <span id="rowCount">Upload file</span>
           </div>
+          <div id="uploadProgress" class="upload-progress" aria-live="polite">
+            <div class="progress-track"><span id="uploadProgressBar"></span></div>
+            <div id="uploadStatus">Ready for full-file analysis</div>
+          </div>
+          <button class="action-btn full-width" id="loadDemoData" data-tooltip="Load safe demo pharma data">
+            <i data-lucide="play-circle"></i>
+            Load demo data
+          </button>
           <div class="privacy-note">
             <i data-lucide="shield-check" aria-hidden="true"></i>
             <span>Files are analyzed locally in your browser. This static app does not upload workbook data to a server.</span>
@@ -224,6 +232,15 @@
             <div class="eyebrow">Auto-built dashboard</div>
             <h1 id="dashboardTitle">Revenue Performance</h1>
           </div>
+          <nav class="nav-tabs" aria-label="Dashboard modules">
+            <button class="nav-tab" data-target="overviewSection">Overview</button>
+            <button class="nav-tab" data-target="landscapeSection">Market Landscape</button>
+            <button class="nav-tab" data-target="positioningSection">Competitor Positioning</button>
+            <button class="nav-tab" data-target="deepDiveSection">Brand Deep Dive</button>
+            <button class="nav-tab" data-target="strategySection">Strategy Lab</button>
+            <button class="nav-tab" data-target="brandPlanSection">Brand Plan</button>
+            <button class="nav-tab" data-target="exportsSection">Exports</button>
+          </nav>
           <div class="topbar-actions">
             <button class="icon-btn" id="resetCriteria" data-tooltip="Reset criteria">
               <i data-lucide="rotate-ccw"></i>
@@ -254,11 +271,14 @@
 
           <section id="activeFilterRibbon" class="active-filter-ribbon" aria-label="Active dashboard filters"></section>
 
+          <section id="dataHealthGate" class="data-health-gate" aria-label="Data health gate"></section>
+
+          <section id="overviewSection" class="module-anchor"></section>
           <section id="executiveGrid" class="executive-grid" aria-label="Executive summary"></section>
 
           <section id="kpiGrid" class="kpi-grid"></section>
 
-          <section class="chart-grid">
+          <section id="landscapeSection" class="chart-grid">
             <article class="chart-panel chart-wide">
               <div class="chart-head">
                 <div>
@@ -299,7 +319,7 @@
             </article>
           </section>
 
-          <section class="lower-grid">
+          <section id="deepDiveSection" class="lower-grid">
             <article class="insight-panel">
               <div class="chart-head">
                 <div>
@@ -336,7 +356,7 @@
             </article>
           </section>
 
-          <section class="pharma-grid">
+          <section id="positioningSection" class="pharma-grid">
             <article class="insight-panel">
               <div class="chart-head">
                 <div>
@@ -359,7 +379,7 @@
               <div id="heatMapGrid" class="heat-map-grid"></div>
             </article>
 
-            <article class="insight-panel framework-panel">
+            <article id="strategySection" class="insight-panel framework-panel">
               <div class="chart-head">
                 <div>
                   <h2>Consulting frameworks</h2>
@@ -381,7 +401,7 @@
               <div id="verticalPlanGrid" class="framework-grid"></div>
             </article>
 
-            <article class="insight-panel brand-plan-panel">
+            <article id="brandPlanSection" class="insight-panel brand-plan-panel">
               <div class="chart-head">
                 <div>
                   <h2>Brand Plan Generator</h2>
@@ -391,12 +411,28 @@
               </div>
               <div id="brandPlanOutput" class="brand-plan-output"></div>
             </article>
+            <article id="exportsSection" class="insight-panel framework-panel">
+              <div class="chart-head">
+                <div>
+                  <h2>Export Center</h2>
+                  <p>Exports use the current filters, mapping, and health-gated data state.</p>
+                </div>
+                <span class="badge">Selected state</span>
+              </div>
+              <div class="export-grid export-grid-wide">
+                <button class="action-btn" data-export-trigger="exportPpt"><i data-lucide="presentation"></i>PPT</button>
+                <button class="action-btn" data-export-trigger="exportPdf"><i data-lucide="file-text"></i>PDF</button>
+                <button class="action-btn" data-export-trigger="exportCsv"><i data-lucide="table"></i>CSV</button>
+                <button class="action-btn" data-export-trigger="exportHtml"><i data-lucide="code-2"></i>HTML</button>
+                <button class="action-btn" data-export-trigger="exportPng"><i data-lucide="image-down"></i>PNG</button>
+              </div>
+            </article>
           </section>
         </section>
       </main>
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=20260426-console-ui"></script>
+    <script src="./app.js?v=20260426-full-engine"></script>
   </body>
 </html>

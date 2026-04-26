@@ -1,6 +1,6 @@
 # Enterprise Full-Data Mode
 
-MarketLens IQ on GitHub Pages is a static browser app. It can stream and sample very large IMS/IQVIA files, but a browser cannot honestly guarantee 100% processing for unlimited file sizes, machines, and memory conditions.
+MarketLens IQ on GitHub Pages is a static browser app. It now uses worker-backed full-row parsing for supported browser workloads, but a browser still cannot honestly guarantee unlimited processing for every file size, machine, and memory condition.
 
 For true 100% processing of very large datasets, use this architecture:
 
@@ -14,8 +14,8 @@ For true 100% processing of very large datasets, use this architecture:
 Recommended validation rules:
 
 - Never generate a strategy plan unless row count, parsed column count, and measure-column count are available.
-- Always show whether the dashboard uses full data or sampled data.
-- Block budget allocation recommendations when the dashboard is sample-only and the user requires final financial approval.
+- Always show rows processed, skipped rows, mapping status, and confidence score.
+- Block budget allocation recommendations when required mappings or numeric parsing confidence are weak.
 - Keep audit metadata: file name, sheet, rows processed, rows skipped, parse errors, timestamp, and aggregation grain.
 
 This keeps the public demo fast while preserving a clear production path for MNC-grade analytics.

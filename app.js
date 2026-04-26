@@ -22,6 +22,30 @@ const state = {
   analysisNotes: [],
   domain: "generic",
   measureColumns: [],
+  pharmaMeasures: {
+    matValueColumns: [],
+    monthlyValueColumns: [],
+    unitColumns: [],
+    volumeColumns: [],
+    valueColumns: []
+  },
+  uploadMeta: {
+    rowsProcessed: 0,
+    skippedRows: 0,
+    totalRows: 0,
+    mode: "idle"
+  },
+  dataHealth: {
+    confidence: 0,
+    missingFields: [],
+    mappedCount: 0,
+    requiredCount: 0,
+    duplicateRows: 0,
+    numericSuccess: 0,
+    dateDetected: false,
+    outlierCount: 0,
+    status: "blocked"
+  },
   columnMap: {},
   strategicFilters: {
     marketType: [],
@@ -51,6 +75,10 @@ function cacheElements() {
     "fileInput",
     "fileName",
     "rowCount",
+    "uploadProgress",
+    "uploadProgressBar",
+    "uploadStatus",
+    "loadDemoData",
     "verticalSelect",
     "sheetSelect",
     "metricSelect",
@@ -95,6 +123,7 @@ function cacheElements() {
     "summaryHeadline",
     "healthScore",
     "activeFilterRibbon",
+    "dataHealthGate",
     "executiveGrid",
     "kpiGrid",
     "trendTitle",
@@ -135,6 +164,8 @@ function cacheElements() {
   ].forEach((id) => {
     els[id] = document.getElementById(id);
   });
+  els.navTabs = Array.from(document.querySelectorAll("[data-target]"));
+  els.exportTriggers = Array.from(document.querySelectorAll("[data-export-trigger]"));
 }
 
 function bindEvents() {
@@ -142,6 +173,8 @@ function bindEvents() {
     const file = event.target.files[0];
     if (file) handleFile(file);
   });
+
+  els.loadDemoData.addEventListener("click", () => loadDemoDataset());
 
   ["dragenter", "dragover"].forEach((eventName) => {
     els.dropZone.addEventListener(eventName, (event) => {
@@ -267,6 +300,20 @@ function bindEvents() {
     });
   });
 
+  els.navTabs.forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.target);
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+
+  els.exportTriggers.forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = els[button.dataset.exportTrigger];
+      if (target) target.click();
+    });
+  });
+
   els.refreshInsights.addEventListener("click", () => {
     inferSelections(true);
     applyVerticalPreset();
@@ -294,6 +341,10 @@ function bindEvents() {
   });
 
   els.generateBrandPlan.addEventListener("click", () => {
+    if (!canGenerateStrategy()) {
+      showToast("Fix column mapping/data health before generating a brand plan.");
+      return;
+    }
     state.brandPlanGenerated = true;
     renderBrandPlan();
     showToast("Brand plan generated from selected data.");
@@ -318,87 +369,225 @@ function initializeEmptyState() {
   setRows([]);
 }
 
+function loadDemoDataset() {
+  const rows = buildDemoDataset();
+  state.workbook = { "Demo pharma market": rows };
+  state.sheetNames = ["Demo pharma market"];
+  state.selectedSheet = "Demo pharma market";
+  state.fileName = "Demo pharma market";
+  state.isSampled = false;
+  state.rowLimit = 0;
+  state.uploadMeta = { rowsProcessed: rows.length, skippedRows: 0, totalRows: rows.length, mode: "demo" };
+  finishUploadProgress("Demo dataset loaded. Replace it with your IMS/IQVIA file for real analysis.");
+  setRows(rows);
+  showToast("Demo pharma dataset loaded.");
+}
+
+function buildDemoDataset() {
+  const therapies = ["CARDIAC", "ANTI DIABETIC", "RESPIRATORY", "PAIN / ANALGESICS", "UROLOGY", "GASTRO INTESTINAL"];
+  const companies = [
+    ["Aster Pharma", "MNC"],
+    ["Cipla Demo", "Indian"],
+    ["Novexa Health", "MNC"],
+    ["Intas Demo", "Indian"],
+    ["Glenmark Demo", "Indian"],
+    ["Torrent Demo", "Indian"]
+  ];
+  const rows = [];
+  therapies.forEach((therapy, therapyIndex) => {
+    companies.forEach(([company, companyType], companyIndex) => {
+      for (let brandIndex = 1; brandIndex <= 3; brandIndex += 1) {
+        const base = 1200 + therapyIndex * 260 + companyIndex * 140 + brandIndex * 95;
+        const growth = 0.94 + therapyIndex * 0.012 + brandIndex * 0.018;
+        const previous = Math.round(base * growth);
+        const current = Math.round(previous * (1.03 + companyIndex * 0.006 - therapyIndex * 0.002));
+        const units = Math.round(current / (12 + brandIndex + companyIndex));
+        const volume = Math.round(units * (1.1 + brandIndex * 0.08));
+        rows.push({
+          BRANDS: `${therapy.split(" ")[0]} Brand ${brandIndex}`,
+          "MANUFACT. DESC": company,
+          COMPANY: company,
+          INDIAN_MNC: companyType,
+          ACUTE_CHRONIC: ["Chronic", "Chronic", "Acute", "Acute", "Chronic", "Acute"][therapyIndex],
+          "Plain/Combination": brandIndex % 2 ? "Plain" : "Combination",
+          GROUP: therapy,
+          SUBGROUP: `${therapy} Sub ${brandIndex}`,
+          MOLECULE_DESC: `${therapy.split(" ")[0]} Molecule ${brandIndex}`,
+          PACK_DESC: `${brandIndex * 10} TAB`,
+          "NI MAT MAY'24": previous,
+          "NI MAT MAY'25": current,
+          "NI MONTH MAY'24": Math.round(previous / 12),
+          "NI MONTH MAY'25": Math.round(current / 12),
+          "UNIT MAY'24": Math.round(units * 0.96),
+          "UNIT MAY'25": units,
+          "VOLUME MAY'24": Math.round(volume * 0.95),
+          "VOLUME MAY'25": volume
+        });
+      }
+    });
+  });
+  return rows;
+}
+
 async function handleFile(file) {
   const ext = file.name.split(".").pop().toLowerCase();
+  resetUploadProgress(`Preparing ${file.name}...`);
   try {
-    if (["csv", "tsv"].includes(ext)) {
-      const text = await file.text();
-      const delimiter = ext === "tsv" ? "\t" : detectDelimiter(text);
-      const rows = parseDelimited(text, delimiter);
-      state.workbook = { [file.name]: rows };
-      state.sheetNames = [file.name];
-      state.selectedSheet = file.name;
-      state.isSampled = false;
-      state.rowLimit = 0;
-    } else if (ext === "json") {
-      const text = await file.text();
-      const rows = parseJsonData(text);
-      state.workbook = { [file.name]: rows };
-      state.sheetNames = [file.name];
-      state.selectedSheet = file.name;
-      state.isSampled = false;
-      state.rowLimit = 0;
-    } else if (ext === "sql") {
-      const text = await file.text();
-      const parsed = parseSqlDump(text);
-      state.workbook = parsed.tables;
-      state.sheetNames = parsed.sheetNames;
-      state.selectedSheet = parsed.sheetNames[0];
-      state.isSampled = parsed.isSampled;
-      state.rowLimit = parsed.rowLimit;
+    if (canUseWorkerFor(file, ext)) {
+      try {
+        const parsed = await ingestFileWithWorker(file);
+        state.workbook = parsed.tables;
+        state.sheetNames = parsed.sheetNames;
+        state.selectedSheet = parsed.sheetNames[0];
+        state.isSampled = false;
+        state.rowLimit = 0;
+        state.uploadMeta = parsed.meta || state.uploadMeta;
+      } catch (workerError) {
+        if (ext === "xlsx" && shouldUseLargeWorkbookMode(file)) throw workerError;
+        showToast("Worker unavailable; using main-thread full parser.");
+        await ingestFileOnMainThread(file, ext);
+      }
+    } else if (["csv", "tsv"].includes(ext)) {
+      await ingestFileOnMainThread(file, ext);
+    } else if (["json", "sql"].includes(ext)) {
+      await ingestFileOnMainThread(file, ext);
     } else {
-      const rowLimit = getWorkbookRowLimit(file);
       const largeMode = shouldUseLargeWorkbookMode(file);
       if (!window.XLSX && !largeMode) {
         showToast("Excel parser did not load. Try CSV or connect to the internet.");
         return;
       }
       if (largeMode) {
-        showToast("Large workbook mode: sampling rows without loading the full Excel file.");
-        const sampled = await readLargeXlsxSample(file, rowLimit);
-        state.workbook = sampled.sheets;
-        state.sheetNames = sampled.sheetNames;
-        state.selectedSheet = sampled.sheetNames[0];
-        state.isSampled = true;
-        state.rowLimit = rowLimit;
+        showToast("Full workbook streaming needs browser worker support. Try Chrome/Edge or export as CSV.");
+        throw new Error("Worker streaming unavailable.");
       } else {
         const buffer = await file.arrayBuffer();
         const workbook = XLSX.read(buffer, {
           type: "array",
           cellDates: true,
-          sheetRows: rowLimit || 0,
           raw: false
         });
-        state.isSampled = Boolean(rowLimit);
-        state.rowLimit = rowLimit;
+        state.isSampled = false;
+        state.rowLimit = 0;
         const sheets = {};
         workbook.SheetNames.forEach((sheetName) => {
           sheets[sheetName] = sheetToRows(workbook.Sheets[sheetName]);
         });
         if (Object.values(sheets).every((rows) => !rows.length) && /\.xlsx$/i.test(file.name) && "DecompressionStream" in window) {
-          showToast("Normal Excel parser returned no rows. Retrying with IMS/IQVIA streaming mode.");
-          const sampled = await readLargeXlsxSample(file, rowLimit || 8000);
-          state.workbook = sampled.sheets;
-          state.sheetNames = sampled.sheetNames;
-          state.selectedSheet = sampled.sheetNames[0];
-          state.isSampled = true;
-          state.rowLimit = rowLimit || 8000;
+          const parsed = await ingestFileWithWorker(file);
+          state.workbook = parsed.tables;
+          state.sheetNames = parsed.sheetNames;
+          state.selectedSheet = parsed.sheetNames[0];
+          state.isSampled = false;
+          state.rowLimit = 0;
+          state.uploadMeta = parsed.meta || state.uploadMeta;
         } else {
-        state.workbook = sheets;
-        state.sheetNames = workbook.SheetNames;
-        state.selectedSheet = workbook.SheetNames[0];
+          state.workbook = sheets;
+          state.sheetNames = workbook.SheetNames;
+          state.selectedSheet = workbook.SheetNames[0];
         }
       }
     }
-  state.fileName = file.name;
+    state.fileName = file.name;
     setRows(state.workbook[state.selectedSheet] || []);
-    showToast(`${file.name} imported.`);
+    finishUploadProgress(`${file.name} fully imported.`);
+    showToast(`${file.name} imported with full-file processing.`);
   } catch (error) {
     console.error(error);
+    finishUploadProgress("Import failed. Check file format or try CSV.");
     showToast("Could not read that file. Check the format and try again.");
   } finally {
     els.fileInput.value = "";
   }
+}
+
+async function ingestFileOnMainThread(file, ext) {
+  if (["csv", "tsv"].includes(ext)) {
+    const text = await file.text();
+    const delimiter = ext === "tsv" ? "\t" : detectDelimiter(text);
+    const rows = parseDelimited(text, delimiter);
+    state.workbook = { [file.name]: rows };
+    state.sheetNames = [file.name];
+    state.selectedSheet = file.name;
+    state.isSampled = false;
+    state.rowLimit = 0;
+    state.uploadMeta = { rowsProcessed: rows.length, skippedRows: 0, totalRows: rows.length, mode: "main-thread" };
+    return;
+  }
+  if (ext === "json") {
+    const rows = parseJsonData(await file.text());
+    state.workbook = { [file.name]: rows };
+    state.sheetNames = [file.name];
+    state.selectedSheet = file.name;
+    state.isSampled = false;
+    state.rowLimit = 0;
+    state.uploadMeta = { rowsProcessed: rows.length, skippedRows: 0, totalRows: rows.length, mode: "main-thread" };
+    return;
+  }
+  if (ext === "sql") {
+    const parsed = parseSqlDump(await file.text());
+    state.workbook = parsed.tables;
+    state.sheetNames = parsed.sheetNames;
+    state.selectedSheet = parsed.sheetNames[0];
+    state.isSampled = false;
+    state.rowLimit = 0;
+    state.uploadMeta = { rowsProcessed: Object.values(parsed.tables).reduce((acc, rows) => acc + rows.length, 0), skippedRows: 0, totalRows: 0, mode: "main-thread" };
+  }
+}
+
+function canUseWorkerFor(file, ext) {
+  if (!window.Worker) return false;
+  if (["csv", "tsv", "json", "sql"].includes(ext)) return true;
+  return ext === "xlsx" && "DecompressionStream" in window && shouldUseLargeWorkbookMode(file);
+}
+
+function ingestFileWithWorker(file) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker("./ingestion-worker.js?v=20260426-full-engine");
+    worker.onmessage = (event) => {
+      const message = event.data || {};
+      if (message.type === "progress") updateUploadProgress(message);
+      if (message.type === "done") {
+        worker.terminate();
+        resolve(message.payload);
+      }
+      if (message.type === "error") {
+        worker.terminate();
+        reject(new Error(message.error || "Worker ingestion failed."));
+      }
+    };
+    worker.onerror = (error) => {
+      worker.terminate();
+      reject(error instanceof Error ? error : new Error(error.message || "Worker ingestion failed."));
+    };
+    worker.postMessage({ file });
+  });
+}
+
+function resetUploadProgress(status) {
+  state.uploadMeta = { rowsProcessed: 0, skippedRows: 0, totalRows: 0, mode: "loading" };
+  updateUploadProgress({ status, rowsProcessed: 0, skippedRows: 0, totalRows: 0, percent: 4 });
+}
+
+function updateUploadProgress(message) {
+  const percent = Math.max(0, Math.min(100, Math.round(message.percent || 0)));
+  state.uploadMeta = {
+    rowsProcessed: message.rowsProcessed || state.uploadMeta.rowsProcessed || 0,
+    skippedRows: message.skippedRows || state.uploadMeta.skippedRows || 0,
+    totalRows: message.totalRows || state.uploadMeta.totalRows || 0,
+    mode: message.mode || state.uploadMeta.mode || "loading"
+  };
+  if (els.uploadProgressBar) els.uploadProgressBar.style.width = `${percent}%`;
+  if (els.uploadStatus) {
+    const rows = state.uploadMeta.rowsProcessed ? ` ${formatNumber(state.uploadMeta.rowsProcessed)} rows processed` : "";
+    const skipped = state.uploadMeta.skippedRows ? `, ${formatNumber(state.uploadMeta.skippedRows)} skipped` : "";
+    els.uploadStatus.textContent = `${message.status || "Processing..."}${rows}${skipped}`;
+  }
+}
+
+function finishUploadProgress(status) {
+  if (els.uploadProgressBar) els.uploadProgressBar.style.width = "100%";
+  if (els.uploadStatus) els.uploadStatus.textContent = status;
 }
 
 function setRows(rows) {
@@ -407,6 +596,7 @@ function setRows(rows) {
   state.columns = getColumns(state.rows);
   state.profile = profileColumns(state.rows, state.columns);
   state.columnMap = autoMapColumns();
+  state.dataHealth = computeDataHealth();
   clearInvalidStrategicFilters();
   state.brandPlanGenerated = false;
   inferSelections(false);
@@ -434,6 +624,13 @@ function shouldUseLargeWorkbookMode(file) {
 function enrichRowsForAnalysis(rows) {
   state.domain = "generic";
   state.measureColumns = [];
+  state.pharmaMeasures = {
+    matValueColumns: [],
+    monthlyValueColumns: [],
+    unitColumns: [],
+    volumeColumns: [],
+    valueColumns: []
+  };
   if (!rows.length) return rows;
 
   const columns = getColumns(rows);
@@ -448,35 +645,94 @@ function enrichRowsForAnalysis(rows) {
   state.domain = "ims";
   const descriptorColumns = new Set(getImsDescriptorColumns(columns));
   const idColumns = new Set(getImsIdColumns(columns));
-  const measureColumns = columns.filter((column) => {
+  const numericMeasureColumns = columns.filter((column) => {
     if (descriptorColumns.has(column) || idColumns.has(column)) return false;
     const details = profileSingleColumn(rows, column);
     return details.numericScore > 0.72;
   });
 
-  state.measureColumns = measureColumns;
-  if (!measureColumns.length) {
+  state.pharmaMeasures = classifyPharmaMeasureColumns(numericMeasureColumns);
+  state.measureColumns = state.pharmaMeasures.valueColumns;
+  if (!numericMeasureColumns.length) {
     state.analysisNotes.push("IMS structure detected, but no numeric matrix columns were found.");
     return rows;
   }
 
   const enriched = rows.map((row) => {
-    const values = measureColumns.map((column) => parseNumber(row[column]) ?? 0);
-    const nonZero = values.filter((value) => value !== 0);
-    const total = sum(values);
+    const mat = latestPairValue(row, state.pharmaMeasures.matValueColumns);
+    const monthly = latestPairValue(row, state.pharmaMeasures.monthlyValueColumns);
+    const unit = latestPairValue(row, state.pharmaMeasures.unitColumns);
+    const volume = latestPairValue(row, state.pharmaMeasures.volumeColumns);
+    const activeValues = numericMeasureColumns.map((column) => parseNumber(row[column]) ?? 0);
+    const value = mat.current || monthly.current;
+    const previousValue = mat.previous || monthly.previous;
+    const growth = previousValue ? ((value - previousValue) / Math.abs(previousValue)) * 100 : 0;
+    const priceBase = unit.current || volume.current;
     return {
       ...row,
-      "IMS Total": total,
-      "IMS Latest": values[values.length - 1] || 0,
-      "IMS Average": values.length ? total / values.length : 0,
-      "IMS Peak": values.length ? Math.max(...values) : 0,
-      "IMS Active Periods": nonZero.length
+      "MAT Value": mat.current,
+      "Previous MAT Value": mat.previous,
+      "Monthly Value": monthly.current,
+      "Previous Monthly Value": monthly.previous,
+      "Value Sales": value,
+      "Unit Sales": unit.current,
+      "Previous Unit Sales": unit.previous,
+      "Volume Sales": volume.current,
+      "Previous Volume Sales": volume.previous,
+      "Growth %": growth,
+      "Price Proxy": priceBase ? value / priceBase : 0,
+      "IMS Active Periods": activeValues.filter((value) => value !== 0).length
     };
   });
 
-  const sampleNote = state.isSampled ? ` Large workbook sampled to the first ${formatNumber(state.rowLimit)} sheet rows for browser performance.` : "";
-  state.analysisNotes.push(`IMS matrix detected; ${formatNumber(measureColumns.length)} numeric measure columns were combined into analysis metrics.${sampleNote}`);
+  state.analysisNotes.push(`IMS matrix detected; ${formatNumber(numericMeasureColumns.length)} numeric period columns classified into value, MAT, monthly, unit, and volume measures without combining unrelated metrics.`);
   return enriched;
+}
+
+function classifyPharmaMeasureColumns(columns) {
+  const cleanColumns = columns.filter(Boolean);
+  const byToken = (patterns) => cleanColumns.filter((column) => patterns.some((pattern) => pattern.test(normalize(column))));
+  const unitColumns = byToken([/unit/, /qty/, /quantity/, /packunit/]);
+  const volumeColumns = byToken([/volume/, /\bvol\b/, /kg/, /litre/, /liter/]);
+  const matValueColumns = byToken([/mat/, /movingannual/]).filter((column) => !unitColumns.includes(column) && !volumeColumns.includes(column));
+  const monthlyValueColumns = cleanColumns.filter((column) => {
+    const text = normalize(column);
+    if (unitColumns.includes(column) || volumeColumns.includes(column) || matValueColumns.includes(column)) return false;
+    return /month|mth|mon|latest|sales|value|revenue|ni/.test(text);
+  });
+  const valueColumns = matValueColumns.length ? matValueColumns : monthlyValueColumns.length ? monthlyValueColumns : cleanColumns.filter((column) => !unitColumns.includes(column) && !volumeColumns.includes(column));
+  return {
+    matValueColumns: sortPeriodColumns(matValueColumns),
+    monthlyValueColumns: sortPeriodColumns(monthlyValueColumns),
+    unitColumns: sortPeriodColumns(unitColumns),
+    volumeColumns: sortPeriodColumns(volumeColumns),
+    valueColumns: sortPeriodColumns(valueColumns)
+  };
+}
+
+function sortPeriodColumns(columns) {
+  return [...columns].sort((a, b) => getPeriodSortKey(a) - getPeriodSortKey(b));
+}
+
+function getPeriodSortKey(column) {
+  const text = String(column || "").toUpperCase();
+  const yearMatch = text.match(/(?:'|20)?(\d{2})(?!\d)/g);
+  const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  const monthIndex = monthNames.findIndex((month) => text.includes(month));
+  const yearToken = yearMatch?.[yearMatch.length - 1] || "";
+  const year = yearToken ? Number(yearToken.replace(/[^0-9]/g, "")) : 0;
+  const fullYear = year < 70 ? 2000 + year : 1900 + year;
+  return fullYear * 12 + Math.max(0, monthIndex);
+}
+
+function latestPairValue(row, columns) {
+  if (!columns.length) return { current: 0, previous: 0 };
+  const currentColumn = columns[columns.length - 1];
+  const previousColumn = columns[columns.length - 2] || "";
+  return {
+    current: parseNumber(row[currentColumn]) ?? 0,
+    previous: previousColumn ? parseNumber(row[previousColumn]) ?? 0 : 0
+  };
 }
 
 function looksLikeImsWorkbook(columns) {
@@ -577,7 +833,7 @@ function inferSelections(force) {
   const category = state.profile.category;
   const date = state.profile.date;
   const metricRank = state.domain === "ims"
-    ? ["imstotal", "imslatest", "imsaverage", "imspeak", "revenue", "sales", "value", "total"]
+    ? ["valuesales", "matvalue", "monthlyvalue", "growth", "revenue", "sales", "value", "total"]
     : state.domain === "finance"
       ? ["profit", "margin", "revenue", "budget", "actual", "spend", "cost", "variance"]
     : state.domain === "marketing"
@@ -617,7 +873,7 @@ function applyVerticalPreset() {
 }
 
 function getVerticalPreset(vertical) {
-  const imsMetrics = ["imstotal", "imslatest", "imsaverage", "imspeak", "imsactiveperiods"];
+  const imsMetrics = ["valuesales", "matvalue", "monthlyvalue", "growth", "priceproxy", "imsactiveperiods"];
   const presets = {
     executive: {
       label: "Executive",
@@ -626,32 +882,32 @@ function getVerticalPreset(vertical) {
     },
     marketing: {
       label: "Marketing",
-      metricRank: state.domain === "ims" ? ["imstotal", "imslatest", "imsactiveperiods"] : ["revenue", "sales", "orders", "value"],
+      metricRank: state.domain === "ims" ? ["valuesales", "matvalue", "monthlyvalue", "growth"] : ["revenue", "sales", "orders", "value"],
       dimensionRank: state.domain === "ims" ? ["brands", "packdesc", "nfc", "acutechronic"] : ["product", "brand", "category", "channel", "campaign"]
     },
     presales: {
       label: "Pre-sales & BD",
-      metricRank: state.domain === "ims" ? ["imspeak", "imstotal", "imslatest"] : ["value", "revenue", "sales", "amount"],
+      metricRank: state.domain === "ims" ? ["growth", "valuesales", "matvalue", "monthlyvalue"] : ["value", "revenue", "sales", "amount"],
       dimensionRank: state.domain === "ims" ? ["group", "manufactdesc", "nfc", "brands"] : ["market", "segment", "region", "industry", "account"]
     },
     finance: {
       label: "Finance",
-      metricRank: state.domain === "ims" ? ["imstotal", "imsaverage", "imslatest"] : ["profit", "cost", "revenue", "budget", "amount"],
+      metricRank: state.domain === "ims" ? ["valuesales", "matvalue", "monthlyvalue", "priceproxy"] : ["profit", "cost", "revenue", "budget", "amount"],
       dimensionRank: state.domain === "ims" ? ["manufactdesc", "group", "brands", "acutechronic"] : ["department", "region", "category", "costcenter"]
     },
     sales: {
       label: "Sales",
-      metricRank: state.domain === "ims" ? ["imslatest", "imstotal", "imspeak"] : ["revenue", "sales", "orders", "pipeline"],
+      metricRank: state.domain === "ims" ? ["monthlyvalue", "valuesales", "matvalue", "growth"] : ["revenue", "sales", "orders", "pipeline"],
       dimensionRank: state.domain === "ims" ? ["manufactdesc", "brands", "group", "packdesc"] : ["region", "salesrep", "account", "territory", "product"]
     },
     supply: {
       label: "Supply Chain",
-      metricRank: state.domain === "ims" ? ["imspeak", "imsaverage", "imstotal", "imslatest"] : ["orders", "demand", "sales", "quantity", "stock"],
+      metricRank: state.domain === "ims" ? ["unitsales", "volumesales", "monthlyvalue", "valuesales"] : ["orders", "demand", "sales", "quantity", "stock"],
       dimensionRank: state.domain === "ims" ? ["packdesc", "brands", "manufactdesc", "nfc"] : ["product", "sku", "warehouse", "region", "vendor"]
     },
     strategy: {
       label: "Brand Strategy",
-      metricRank: state.domain === "ims" ? ["imstotal", "imslatest", "imspeak", "imsactiveperiods"] : ["revenue", "sales", "profit", "value"],
+      metricRank: state.domain === "ims" ? ["valuesales", "matvalue", "growth", "monthlyvalue"] : ["revenue", "sales", "profit", "value"],
       dimensionRank: state.domain === "ims" ? ["brands", "moleculedesc", "group", "manufactdesc"] : ["brand", "product", "category", "segment"]
     }
   };
@@ -767,11 +1023,11 @@ function getMappingConfig() {
     { role: "marketType", id: "mapMarketType", label: "Market type", aliases: ["acutechronic", "markettype", "acute", "chronic"] },
     { role: "companyType", id: "mapCompanyType", label: "Company type", aliases: ["indianmnc", "companytype", "ownership", "mnc"] },
     { role: "productType", id: "mapProductType", label: "Product type", aliases: ["plaincombination", "plain", "combination", "producttype"] },
-    { role: "matSales", id: "mapMatSales", label: "MAT sales", aliases: ["mat", "imstotal", "movingannualtotal"] },
-    { role: "monthlySales", id: "mapMonthlySales", label: "Monthly sales", aliases: ["imslatest", "monthlysales", "monthsales", "latest"] },
-    { role: "unitSales", id: "mapUnitSales", label: "Unit sales", aliases: ["unit", "units", "qty", "quantity"] },
-    { role: "volumeSales", id: "mapVolumeSales", label: "Volume sales", aliases: ["volume", "vol", "kg", "litre", "liter"] },
-    { role: "valueSales", id: "mapValueSales", label: "Value sales", aliases: ["value", "sales", "revenue", "amount", "imstotal"] }
+    { role: "matSales", id: "mapMatSales", label: "MAT sales", aliases: ["matvalue", "mat", "movingannualtotal"] },
+    { role: "monthlySales", id: "mapMonthlySales", label: "Monthly sales", aliases: ["monthlyvalue", "monthlysales", "monthsales", "latest"] },
+    { role: "unitSales", id: "mapUnitSales", label: "Unit sales", aliases: ["unitsales", "unit", "units", "qty", "quantity"] },
+    { role: "volumeSales", id: "mapVolumeSales", label: "Volume sales", aliases: ["volumesales", "volume", "vol", "kg", "litre", "liter"] },
+    { role: "valueSales", id: "mapValueSales", label: "Value sales", aliases: ["valuesales", "value", "sales", "revenue", "amount", "matvalue"] }
   ];
 }
 
@@ -790,8 +1046,11 @@ function autoMapColumns() {
   if (!map.marketType && allColumns.includes("ACUTE_CHRONIC")) map.marketType = "ACUTE_CHRONIC";
   if (!map.companyType && allColumns.includes("INDIAN_MNC")) map.companyType = "INDIAN_MNC";
   if (!map.productType && allColumns.includes("Plain/Combination")) map.productType = "Plain/Combination";
-  if (!map.matSales && allColumns.includes("IMS Total")) map.matSales = "IMS Total";
-  if (!map.monthlySales && allColumns.includes("IMS Latest")) map.monthlySales = "IMS Latest";
+  if (!map.matSales && allColumns.includes("MAT Value")) map.matSales = "MAT Value";
+  if (!map.monthlySales && allColumns.includes("Monthly Value")) map.monthlySales = "Monthly Value";
+  if (!map.valueSales && allColumns.includes("Value Sales")) map.valueSales = "Value Sales";
+  if (!map.unitSales && allColumns.includes("Unit Sales")) map.unitSales = "Unit Sales";
+  if (!map.volumeSales && allColumns.includes("Volume Sales")) map.volumeSales = "Volume Sales";
   if (!map.valueSales) map.valueSales = map.matSales || map.monthlySales || numeric[0] || "";
   if (!map.unitSales) map.unitSales = pickPeriodColumn(/unit|qty|quantity/i) || "";
   if (!map.volumeSales) map.volumeSales = pickPeriodColumn(/vol|volume/i) || "";
@@ -928,6 +1187,7 @@ function getSelectedFocusLabel() {
 function renderDashboard() {
   applyThemeAndDensity();
   renderShellText();
+  renderDataHealthGate();
   renderExecutiveSummary();
   renderKpis();
   renderCharts();
@@ -1000,6 +1260,102 @@ function renderActiveFilterRibbon() {
       renderDashboard();
     });
   });
+}
+
+function computeDataHealth() {
+  const rows = state.rows || [];
+  const requiredRoles = state.domain === "ims"
+    ? ["brand", "company", "therapy", "molecule", "marketType", "companyType", "productType", "valueSales"]
+    : ["valueSales"];
+  const missingFields = requiredRoles.filter((role) => !state.columnMap[role]);
+  const mappedCount = requiredRoles.length - missingFields.length;
+  const metric = getPreferredMetric();
+  const metricValues = metric ? rows.map((row) => row[metric]).filter((value) => !isBlank(value)) : [];
+  const numericHits = metricValues.filter((value) => parseNumber(value) !== null).length;
+  const numericSuccess = metricValues.length ? (numericHits / metricValues.length) * 100 : 0;
+  const duplicateRows = countDuplicateRows(rows, requiredRoles.map((role) => state.columnMap[role]).filter(Boolean));
+  const outlierCount = countOutliers(metricValues.map(parseNumber).filter((value) => value !== null));
+  const dateDetected = Boolean(state.dateColumn || getPeriodColumnsForMetric(metric).length >= 2);
+  const rowScore = rows.length ? 18 : 0;
+  const mappingScore = requiredRoles.length ? (mappedCount / requiredRoles.length) * 34 : 0;
+  const numericScore = Math.min(24, numericSuccess * 0.24);
+  const periodScore = dateDetected ? 14 : 0;
+  const duplicatePenalty = rows.length ? Math.min(8, (duplicateRows / rows.length) * 100) : 0;
+  const outlierPenalty = metricValues.length ? Math.min(5, (outlierCount / metricValues.length) * 100) : 0;
+  const confidence = Math.max(0, Math.min(100, Math.round(rowScore + mappingScore + numericScore + periodScore + 10 - duplicatePenalty - outlierPenalty)));
+  return {
+    confidence,
+    missingFields,
+    mappedCount,
+    requiredCount: requiredRoles.length,
+    duplicateRows,
+    numericSuccess,
+    dateDetected,
+    outlierCount,
+    status: confidence >= 62 && !missingFields.includes("valueSales") ? "ready" : "blocked"
+  };
+}
+
+function countDuplicateRows(rows, columns) {
+  if (!rows.length || !columns.length) return 0;
+  const seen = new Set();
+  let duplicates = 0;
+  rows.forEach((row) => {
+    const key = columns.map((column) => normalizeFilterValue(row[column])).join("|");
+    if (seen.has(key)) duplicates += 1;
+    else seen.add(key);
+  });
+  return duplicates;
+}
+
+function countOutliers(values) {
+  if (values.length < 10) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const q1 = sorted[Math.floor(sorted.length * 0.25)];
+  const q3 = sorted[Math.floor(sorted.length * 0.75)];
+  const iqr = q3 - q1;
+  if (!iqr) return 0;
+  const low = q1 - iqr * 3;
+  const high = q3 + iqr * 3;
+  return values.filter((value) => value < low || value > high).length;
+}
+
+function canGenerateStrategy() {
+  return state.dataHealth.status === "ready" && getActiveRows().length > 0;
+}
+
+function renderDataHealthGate() {
+  const health = state.dataHealth;
+  const missing = health.missingFields.map((role) => getMappingConfig().find((item) => item.role === role)?.label || role);
+  const statusText = health.status === "ready" ? "Ready for strategy" : "Strategy locked until mapping improves";
+  els.dataHealthGate.innerHTML = `
+    <div class="health-gate-head">
+      <div>
+        <span class="eyebrow">Data health gate</span>
+        <h2>${escapeHtml(statusText)}</h2>
+      </div>
+      <strong class="health-pill ${health.status}">${formatNumber(health.confidence)}% confidence</strong>
+    </div>
+    <div class="health-grid">
+      ${healthTile("Rows loaded", formatNumber(state.rows.length), `${formatNumber(state.uploadMeta.rowsProcessed || state.rows.length)} processed`)}
+      ${healthTile("Columns mapped", `${health.mappedCount}/${health.requiredCount}`, missing.length ? `Missing ${missing.join(", ")}` : "All required fields mapped")}
+      ${healthTile("Numeric parsing", `${formatNumber(health.numericSuccess)}%`, "Selected value metric")}
+      ${healthTile("Duplicate rows", formatNumber(health.duplicateRows), "Based on mapped pharma keys")}
+      ${healthTile("Periods", health.dateDetected ? "Detected" : "Missing", "Month/MAT trend support")}
+      ${healthTile("Outliers", formatNumber(health.outlierCount), "Flagged for review")}
+    </div>
+    ${health.status === "ready" ? "" : `<div class="health-warning">Fix the mapping wizard fields before generating strategy or brand plans. Dashboards still render, but strategy output is blocked to avoid unsupported recommendations.</div>`}
+  `;
+}
+
+function healthTile(label, value, note) {
+  return `
+    <section class="health-tile">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <small>${escapeHtml(note)}</small>
+    </section>
+  `;
 }
 
 function renderExecutiveSummary() {
@@ -1322,6 +1678,12 @@ function renderInsights() {
 }
 
 function renderStrategyPlan() {
+  if (!canGenerateStrategy()) {
+    els.strategyTitle.textContent = "Strategy locked";
+    els.strategyMeta.textContent = "Improve data health and mapping before recommendations are generated";
+    els.strategyGrid.innerHTML = `<section class="strategy-card"><h3>Data-backed gate</h3><p>Strategy recommendations are blocked because confidence is ${formatNumber(state.dataHealth.confidence)}%. Map brand/company/therapy/molecule and a value metric to unlock framework output.</p></section>`;
+    return;
+  }
   const plan = buildStrategyPlan();
   els.strategyTitle.textContent = plan.title;
   els.strategyMeta.textContent = plan.meta;
@@ -1363,19 +1725,19 @@ function buildStrategyPlan() {
 
   const playbooks = {
     executive: [
-      ["Where to play", `<strong>${common.leader}</strong> leads ${common.dimension} with ${common.topShare}% share of ${common.metric}. Prioritize leadership review around the top contributors before expanding spend.`],
-      ["How to win", `Use <strong>${common.challenger}</strong> as the challenger benchmark and compare route-to-market, price, pack, and channel execution against the leader.`],
-      ["Governance", `${integrity} Track concentration (${common.top3Share}% in top 3) before making portfolio-level commitments.`]
+      ["What happened", `<strong>${common.leader}</strong> leads ${common.dimension} with ${common.topShare}% share of ${common.metric} using ${formatNumber(rows.length)} filtered rows.`],
+      ["Why it matters", `Top-3 concentration is ${common.top3Share}%, so leadership can decide whether this is a defend, diversify, or challenger-invest market.`],
+      ["Recommended action", `${integrity} Review leader/challenger gaps and fund only segments where mapped value, growth, and share support the decision.`]
     ],
     marketing: [
-      ["Brand plan", `Build the core brand plan around <strong>${common.leader}</strong>: positioning, priority segments, message architecture, objection handling, and evidence calendar.`],
-      ["Campaign design", `Allocate campaigns across awareness, conversion, and retention. Use <strong>${common.laggard}</strong> for turnaround tests only after message-market fit is validated.`],
-      ["Measurement", `Use ${common.metric}, active periods, contribution share, and gap-to-leader as monthly brand-plan KPIs.`]
+      ["What happened", `<strong>${common.leader}</strong> is the leading brand/segment in the filtered market at ${common.topShare}% share.`],
+      ["Business implication", `Marketing spend should not be spread evenly; it should defend the leader and test challenger pockets supported by growth data.`],
+      ["Recommended action", `Build campaigns with KPIs tied to ${common.metric}, rank movement, share gap, and period growth.`]
     ],
     strategy: [
-      ["Portfolio choices", `Classify brands into grow, defend, fix, and deprioritize. <strong>${common.leader}</strong> is a defend/grow candidate; <strong>${common.laggard}</strong> needs diagnosis.`],
-      ["Molecule strategy", `For molecule/company planning, compare leader share, challenger intensity, and pack/form concentration before selecting launch or expansion plays.`],
-      ["End-to-end plan", `Translate the opportunity into brand objective, segment target, channel mix, investment ask, field execution, supply readiness, and review cadence.`]
+      ["What happened", `The filtered portfolio shows ${common.leader} leading while ${common.laggard} trails the selected ${common.dimension} universe.`],
+      ["Business implication", `Frameworks should be applied only to segments with enough mapped value, growth, and competitor evidence.`],
+      ["Recommended action", `Classify each pocket into defend, invest, optimize, or reposition and attach budget gates to measured performance.`]
     ],
     presales: [
       ["Opportunity map", `<strong>${common.leader}</strong> and adjacent high-share pockets are the strongest BD proof points. Use low-share but active pockets as whitespace stories.`],
@@ -1385,7 +1747,7 @@ function buildStrategyPlan() {
     finance: [
       ["Budget allocation", `Use top-share concentration to allocate base budget to proven contributors and reserve test budget for high-potential challengers.`],
       ["Scenario model", `Model three cases: defend leader, accelerate challenger, and fix laggard. Tie spend gates to incremental ${common.metric}.`],
-      ["Controls", `${integrity} Budget decisions should be blocked if analysis is sampled and full-data validation is required.`]
+      ["Controls", `${integrity} Budget decisions should be blocked when required mappings or numeric parsing confidence are weak.`]
     ],
     sales: [
       ["Gap diagnosis", `Use <strong>${common.leader}</strong> as the execution benchmark and <strong>${common.laggard}</strong> as the first gap review candidate.`],
@@ -1413,8 +1775,7 @@ function buildStrategyPlan() {
 
 function getDataIntegrityStatement(rows) {
   if (!rows.length) return "No row-level evidence is available for this view.";
-  if (state.isSampled) return `This is a sampled browser analysis of ${formatNumber(rows.length)} rows; do not present it as full-market truth without full-data processing.`;
-  return `This view is based on ${formatNumber(rows.length)} loaded rows from the selected criteria.`;
+  return `This view is based on ${formatNumber(rows.length)} rows after selected filters, with ${formatNumber(state.dataHealth.confidence)}% data-health confidence.`;
 }
 
 function buildInsights() {
@@ -1521,9 +1882,10 @@ function buildCompetitiveSet() {
 }
 
 function getRowsGrowth(rows, metric) {
-  if (state.domain === "ims" && state.measureColumns.length >= 2) {
-    const previousColumn = state.measureColumns[state.measureColumns.length - 2];
-    const currentColumn = state.measureColumns[state.measureColumns.length - 1];
+  const periodColumns = getPeriodColumnsForMetric(metric);
+  if (state.domain === "ims" && periodColumns.length >= 2) {
+    const previousColumn = periodColumns[periodColumns.length - 2];
+    const currentColumn = periodColumns[periodColumns.length - 1];
     const previous = sum(rows.map((row) => parseNumber(row[previousColumn]) ?? 0));
     const current = sum(rows.map((row) => parseNumber(row[currentColumn]) ?? 0));
     return previous ? ((current - previous) / Math.abs(previous)) * 100 : 0;
@@ -1621,6 +1983,11 @@ function renderHeatMap() {
 }
 
 function renderFrameworkOutputs() {
+  if (!canGenerateStrategy()) {
+    els.frameworkMeta.textContent = "Frameworks require mapped, healthy data";
+    els.frameworkGrid.innerHTML = `<section class="framework-card"><h3>Blocked</h3><p>Framework output is disabled until the data health gate reaches the ready threshold. This prevents generic or unsupported recommendations.</p></section>`;
+    return;
+  }
   const framework = buildFrameworkOutputs();
   els.frameworkMeta.textContent = `${framework.focus} strategy logic from selected filters`;
   els.frameworkGrid.innerHTML = framework.cards.map((card) => `
@@ -1645,13 +2012,18 @@ function buildFrameworkOutputs() {
     ["STP", `Segment by therapy, molecule, market type, and company type; target high-growth low-share pockets; position ${focus.name} against the top competitor with evidence-led differentiation.`],
     ["Porter's Five Forces", `Rivalry is ${intensity}; buyer power rises when many competitors show similar value. Defend through KOL advocacy, supply reliability, and differentiated clinical/brand evidence.`],
     ["Brand Equity", `Build salience, credibility, consideration, and loyalty by linking brand promise to measurable share, trend, and prescriber/customer activation KPIs.`],
-    ["Go-To-Market", `Translate opportunity into priority accounts, call plan, digital journey, KOL calendar, sampling or access plan, and weekly sales governance.`],
+    ["Go-To-Market", `Translate opportunity into priority accounts, call plan, digital journey, KOL calendar, access plan, and weekly sales governance.`],
     ["Opportunity Matrix", `Score pockets by value, growth, competitive gap, execution ease, and supply readiness; fund high-value high-growth gaps first.`]
   ];
   return { focus: focus.name, cards: cards.map(([title, body]) => ({ title, body })) };
 }
 
 function renderVerticalPlans() {
+  if (!canGenerateStrategy()) {
+    els.verticalPlanMeta.textContent = "Team plans require mapped, healthy data";
+    els.verticalPlanGrid.innerHTML = `<section class="framework-card"><h3>Blocked</h3><p>Upload a dataset and complete the mapping wizard before department plans are generated.</p></section>`;
+    return;
+  }
   const plans = buildVerticalPlans();
   els.verticalPlanMeta.textContent = `Action plan for ${formatNumber(getActiveRows().length)} selected rows`;
   els.verticalPlanGrid.innerHTML = plans.map((plan) => `
@@ -1678,7 +2050,12 @@ function buildVerticalPlans() {
 
 function renderBrandPlan() {
   if (!state.brandPlanGenerated) {
-    els.brandPlanOutput.innerHTML = `<div class="empty-state">Select filters, then click Generate Brand Plan.</div>`;
+    els.brandPlanOutput.innerHTML = `<div class="empty-state">${canGenerateStrategy() ? "Select filters, then click Generate Brand Plan." : "Brand plan is locked until the data health gate is ready."}</div>`;
+    return;
+  }
+  if (!canGenerateStrategy()) {
+    state.brandPlanGenerated = false;
+    els.brandPlanOutput.innerHTML = `<div class="empty-state">Brand plan blocked because the data health gate is not ready.</div>`;
     return;
   }
   const sections = buildBrandPlan();
@@ -1775,7 +2152,7 @@ function renderTablePreview() {
 
 function getPreviewColumns() {
   if (state.domain === "ims") {
-    const preferred = ["BRANDS", "MANUFACT. DESC", "GROUP", "PACK_DESC", "ACUTE_CHRONIC", "IMS Total", "IMS Latest", "IMS Active Periods"];
+    const preferred = ["BRANDS", "MANUFACT. DESC", "GROUP", "PACK_DESC", "ACUTE_CHRONIC", "MAT Value", "Monthly Value", "Growth %", "Price Proxy", "IMS Active Periods"];
     const picked = preferred.filter((column) => state.columns.includes(column));
     const fallback = state.columns.filter((column) => !picked.includes(column)).slice(0, Math.max(0, 8 - picked.length));
     return [...picked, ...fallback].slice(0, 8);
@@ -1820,14 +2197,17 @@ function groupByIndex(rows, metric) {
 
 function getTrendData(metric) {
   const rows = getActiveRows();
-  if (state.domain === "ims" && state.measureColumns.length) return groupByMeasureColumns(rows);
+  if (state.domain === "ims") {
+    const columns = getPeriodColumnsForMetric(metric);
+    if (columns.length) return groupByMeasureColumns(rows, columns);
+  }
   if (state.dateColumn) return groupByDate(rows, state.dateColumn, metric);
   return groupByIndex(rows, metric);
 }
 
-function groupByMeasureColumns(rows) {
+function groupByMeasureColumns(rows, periodColumns = state.measureColumns) {
   const maxPoints = 18;
-  const columns = state.measureColumns;
+  const columns = periodColumns;
   const step = Math.max(1, Math.ceil(columns.length / maxPoints));
   const points = [];
   for (let i = 0; i < columns.length; i += step) {
@@ -1842,18 +2222,21 @@ function groupByMeasureColumns(rows) {
 }
 
 function calculateTrend(rows, dateColumn, metric) {
-  if (state.domain === "ims" && state.measureColumns.length >= 2) {
-    const previousColumn = state.measureColumns[state.measureColumns.length - 2];
-    const currentColumn = state.measureColumns[state.measureColumns.length - 1];
+  if (state.domain === "ims") {
+    const periodColumns = getPeriodColumnsForMetric(metric);
+    if (periodColumns.length >= 2) {
+    const previousColumn = periodColumns[periodColumns.length - 2];
+    const currentColumn = periodColumns[periodColumns.length - 1];
     const previous = sum(rows.map((row) => parseNumber(row[previousColumn]) ?? 0));
     const current = sum(rows.map((row) => parseNumber(row[currentColumn]) ?? 0));
     const change = previous === 0 ? 0 : ((current - previous) / Math.abs(previous)) * 100;
     return {
       label: "Latest IMS period",
       value: `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`,
-      note: `${labelMeasureColumn(currentColumn, state.measureColumns.length - 1)} vs ${labelMeasureColumn(previousColumn, state.measureColumns.length - 2)}`,
+      note: `${labelMeasureColumn(currentColumn, periodColumns.length - 1)} vs ${labelMeasureColumn(previousColumn, periodColumns.length - 2)}`,
       direction: change >= 0 ? "good" : "bad"
     };
+    }
   }
   if (!dateColumn) {
     return { label: "Records", value: formatNumber(rows.length), note: "No date field found", direction: "" };
@@ -1871,6 +2254,15 @@ function calculateTrend(rows, dateColumn, metric) {
     note: `${series[series.length - 1].name} vs ${series[series.length - 2].name}`,
     direction: change >= 0 ? "good" : "bad"
   };
+}
+
+function getPeriodColumnsForMetric(metric) {
+  const name = normalize(metric);
+  if (/unit/.test(name)) return state.pharmaMeasures.unitColumns || [];
+  if (/volume|vol/.test(name)) return state.pharmaMeasures.volumeColumns || [];
+  if (/monthly|month/.test(name)) return state.pharmaMeasures.monthlyValueColumns || [];
+  if (/mat|value|sales|revenue|growth/.test(name)) return state.pharmaMeasures.valueColumns || [];
+  return state.measureColumns || [];
 }
 
 function labelMeasureColumn(column, index) {
@@ -2074,230 +2466,6 @@ function sheetToRows(sheet) {
   return tableToObjects(table);
 }
 
-async function readLargeXlsxSample(file, maxRows) {
-  if (!("DecompressionStream" in window)) {
-    throw new Error("This browser does not support streaming Excel decompression.");
-  }
-
-  const entries = await readZipDirectory(file);
-  const workbookEntry = entries.get("xl/workbook.xml");
-  const relsEntry = entries.get("xl/_rels/workbook.xml.rels");
-  if (!workbookEntry || !relsEntry) throw new Error("Workbook metadata missing.");
-
-  const workbookXml = parseXml(await readZipEntryText(file, workbookEntry));
-  const relsXml = parseXml(await readZipEntryText(file, relsEntry));
-  const relMap = new Map(Array.from(relsXml.querySelectorAll("Relationship")).map((rel) => [rel.getAttribute("Id"), rel.getAttribute("Target")]));
-  const sheetMeta = Array.from(workbookXml.querySelectorAll("sheet")).map((sheet, index) => {
-    const rid = sheet.getAttribute("r:id") || sheet.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
-    return {
-      name: sheet.getAttribute("name") || `Sheet ${index + 1}`,
-      path: normalizeZipPath("xl", relMap.get(rid) || `worksheets/sheet${index + 1}.xml`)
-    };
-  }).filter((sheet) => entries.has(sheet.path));
-
-  if (!sheetMeta.length) throw new Error("No readable sheets found.");
-
-  const sharedEntry = entries.get("xl/sharedStrings.xml");
-  const sharedStrings = sharedEntry ? parseSharedStrings(await readZipEntryText(file, sharedEntry)) : [];
-  const sheets = {};
-  for (const sheet of sheetMeta.slice(0, 3)) {
-    showToast(`Large workbook mode: reading ${sheet.name} sample...`);
-    const table = await readSheetRowsStreaming(file, entries.get(sheet.path), sharedStrings, maxRows);
-    sheets[sheet.name] = tableToObjects(table);
-  }
-
-  return {
-    sheetNames: sheetMeta.slice(0, 3).map((sheet) => sheet.name),
-    sheets
-  };
-}
-
-async function readZipDirectory(file) {
-  const tailSize = Math.min(file.size, 1024 * 1024);
-  const tail = new Uint8Array(await file.slice(file.size - tailSize).arrayBuffer());
-  let eocd = -1;
-  for (let i = tail.length - 22; i >= 0; i -= 1) {
-    if (tail[i] === 0x50 && tail[i + 1] === 0x4b && tail[i + 2] === 0x05 && tail[i + 3] === 0x06) {
-      eocd = i;
-      break;
-    }
-  }
-  if (eocd < 0) throw new Error("Excel zip directory not found.");
-
-  const view = new DataView(tail.buffer, tail.byteOffset, tail.byteLength);
-  const cdSize = view.getUint32(eocd + 12, true);
-  const cdOffset = view.getUint32(eocd + 16, true);
-  const dir = new Uint8Array(await file.slice(cdOffset, cdOffset + cdSize).arrayBuffer());
-  const dirView = new DataView(dir.buffer, dir.byteOffset, dir.byteLength);
-  const entries = new Map();
-  let offset = 0;
-
-  while (offset + 46 <= dir.length && dirView.getUint32(offset, true) === 0x02014b50) {
-    const method = dirView.getUint16(offset + 10, true);
-    const compressedSize = dirView.getUint32(offset + 20, true);
-    const uncompressedSize = dirView.getUint32(offset + 24, true);
-    const nameLength = dirView.getUint16(offset + 28, true);
-    const extraLength = dirView.getUint16(offset + 30, true);
-    const commentLength = dirView.getUint16(offset + 32, true);
-    const localHeaderOffset = dirView.getUint32(offset + 42, true);
-    const name = decodeBytes(dir.slice(offset + 46, offset + 46 + nameLength));
-    entries.set(name.replace(/\\/g, "/"), { name, method, compressedSize, uncompressedSize, localHeaderOffset });
-    offset += 46 + nameLength + extraLength + commentLength;
-  }
-
-  return entries;
-}
-
-async function readZipEntryText(file, entry) {
-  const stream = await zipEntryStream(file, entry);
-  const reader = stream.pipeThrough(new TextDecoderStream()).getReader();
-  let text = "";
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    text += value;
-  }
-  return text;
-}
-
-async function readSheetRowsStreaming(file, entry, sharedStrings, maxRows) {
-  const rows = [];
-  const stream = await zipEntryStream(file, entry);
-  const reader = stream.pipeThrough(new TextDecoderStream()).getReader();
-  let buffer = "";
-
-  while (rows.length < maxRows) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += value;
-    let rowEnd = buffer.indexOf("</row>");
-    while (rowEnd >= 0 && rows.length < maxRows) {
-      const rowStart = buffer.lastIndexOf("<row", rowEnd);
-      if (rowStart < 0) {
-        buffer = buffer.slice(rowEnd + 6);
-        rowEnd = buffer.indexOf("</row>");
-        continue;
-      }
-      const rowXml = buffer.slice(rowStart, rowEnd + 6);
-      const parsed = parseSheetRow(rowXml, sharedStrings);
-      if (parsed.some((cell) => !isBlank(cell))) rows.push(parsed);
-      buffer = buffer.slice(rowEnd + 6);
-      rowEnd = buffer.indexOf("</row>");
-    }
-    if (rows.length && rows.length % 500 === 0) {
-      showToast(`Large workbook mode: ${formatNumber(rows.length)} rows sampled...`);
-    }
-    if (buffer.length > 25000000) {
-      const lastRowStart = buffer.lastIndexOf("<row");
-      buffer = lastRowStart > 0 ? buffer.slice(lastRowStart) : buffer.slice(-1000000);
-    }
-  }
-
-  try {
-    await reader.cancel();
-  } catch (error) {
-    // The stream can already be closed after natural completion.
-  }
-  return rows;
-}
-
-async function zipEntryStream(file, entry) {
-  const header = new Uint8Array(await file.slice(entry.localHeaderOffset, entry.localHeaderOffset + 30).arrayBuffer());
-  const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
-  if (view.getUint32(0, true) !== 0x04034b50) throw new Error(`Invalid zip entry: ${entry.name}`);
-  const nameLength = view.getUint16(26, true);
-  const extraLength = view.getUint16(28, true);
-  const dataStart = entry.localHeaderOffset + 30 + nameLength + extraLength;
-  const compressed = file.slice(dataStart, dataStart + entry.compressedSize).stream();
-  if (entry.method === 0) return compressed;
-  if (entry.method === 8) return compressed.pipeThrough(new DecompressionStream("deflate-raw"));
-  throw new Error(`Unsupported zip compression method ${entry.method}.`);
-}
-
-function parseSheetRow(rowXml, sharedStrings) {
-  const cells = new Map();
-  const cellPattern = /<c\b([^>]*)>([\s\S]*?)<\/c>/g;
-  let match;
-  while ((match = cellPattern.exec(rowXml))) {
-    const attrs = match[1];
-    const body = match[2];
-    const ref = getXmlAttr(attrs, "r") || "";
-    const type = getXmlAttr(attrs, "t") || "";
-    const index = columnIndexFromRef(ref);
-    let value = "";
-    if (type === "inlineStr") {
-      value = decodeXmlText((body.match(/<t[^>]*>([\s\S]*?)<\/t>/) || [])[1] || "");
-    } else {
-      value = decodeXmlText((body.match(/<v[^>]*>([\s\S]*?)<\/v>/) || [])[1] || "");
-      if (type === "s") value = sharedStrings[Number(value)] || "";
-    }
-    cells.set(index, coerceCell(value));
-  }
-
-  const max = cells.size ? Math.max(...cells.keys()) : -1;
-  const row = [];
-  for (let i = 0; i <= max; i += 1) row.push(cells.has(i) ? cells.get(i) : "");
-  return row;
-}
-
-function parseSharedStrings(xml) {
-  const strings = [];
-  const pattern = /<si\b[\s\S]*?<\/si>/g;
-  let match;
-  while ((match = pattern.exec(xml))) {
-    const parts = [];
-    const textPattern = /<t[^>]*>([\s\S]*?)<\/t>/g;
-    let textMatch;
-    while ((textMatch = textPattern.exec(match[0]))) parts.push(decodeXmlText(textMatch[1]));
-    strings.push(parts.join(""));
-  }
-  return strings;
-}
-
-function parseXml(xml) {
-  const parsed = new DOMParser().parseFromString(xml, "application/xml");
-  if (parsed.querySelector("parsererror")) throw new Error("Invalid workbook XML.");
-  return parsed;
-}
-
-function getXmlAttr(attrs, name) {
-  const match = attrs.match(new RegExp(`\\b${name}="([^"]*)"`, "i"));
-  return match ? decodeXmlText(match[1]) : "";
-}
-
-function decodeXmlText(value) {
-  return String(value || "")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, "\"")
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, "&");
-}
-
-function decodeBytes(bytes) {
-  return new TextDecoder("utf-8").decode(bytes);
-}
-
-function normalizeZipPath(base, target) {
-  if (!target) return "";
-  if (target.startsWith("/")) return target.slice(1);
-  const parts = `${base}/${target}`.split("/");
-  const out = [];
-  parts.forEach((part) => {
-    if (!part || part === ".") return;
-    if (part === "..") out.pop();
-    else out.push(part);
-  });
-  return out.join("/");
-}
-
-function columnIndexFromRef(ref) {
-  const letters = String(ref || "").replace(/[^A-Z]/gi, "").toUpperCase();
-  let index = 0;
-  for (const letter of letters) index = index * 26 + letter.charCodeAt(0) - 64;
-  return Math.max(0, index - 1);
-}
-
 function tableToObjects(table) {
   const nonEmptyRows = table.filter((row) => row.some((cell) => !isBlank(cell)));
   if (!nonEmptyRows.length) return [];
@@ -2389,13 +2557,11 @@ function flattenObject(input, prefix = "", output = {}) {
 }
 
 function parseSqlDump(text) {
-  const maxRows = 50000;
   const tables = {};
   const schemas = parseSqlSchemas(text);
   const insertPattern = /insert\s+into\s+[`"\[]?([\w.\- ]+)[`"\]]?\s*(?:\(([^)]*)\))?\s*values\s*([\s\S]*?);/gi;
   let match;
   let totalRows = 0;
-  let sampled = false;
 
   while ((match = insertPattern.exec(text))) {
     const tableName = cleanSqlIdentifier(match[1]) || "SQL data";
@@ -2404,10 +2570,6 @@ function parseSqlDump(text) {
     const tuples = extractSqlTuples(valuesBlock);
     if (!tables[tableName]) tables[tableName] = [];
     tuples.forEach((tuple) => {
-      if (totalRows >= maxRows) {
-        sampled = true;
-        return;
-      }
       const values = splitSqlCsv(tuple).map(sqlValue);
       const columns = explicitColumns || schemas[tableName] || values.map((_, index) => `Column ${index + 1}`);
       const row = {};
@@ -2427,8 +2589,8 @@ function parseSqlDump(text) {
   return {
     tables,
     sheetNames: Object.keys(tables),
-    isSampled: sampled,
-    rowLimit: sampled ? maxRows : 0
+    isSampled: false,
+    rowLimit: 0
   };
 }
 

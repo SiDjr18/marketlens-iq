@@ -7,7 +7,7 @@ MarketLens IQ is a browser-based Excel-to-dashboard studio for large IMS/IQVIA-s
 - Upload `.xlsx`, `.xls`, `.csv`, `.tsv`, `.json`, or `.sql`
 - Large `.xlsx` streaming mode for 250-500 MB+ IMS/IQVIA files
 - Auto-detect IMS/pharma matrix files with fields such as `BRANDS`, `PACK_DESC`, `MANUFACT. DESC`, `GROUP`, `ACUTE_CHRONIC`, and `NFC`
-- Derived IMS metrics: `IMS Total`, `IMS Latest`, `IMS Average`, `IMS Peak`, `IMS Active Periods`
+- Derived IMS metrics: `MAT Value`, `Monthly Value`, `Value Sales`, `Unit Sales`, `Volume Sales`, `Growth %`, `Price Proxy`, `IMS Active Periods`
 - Corporate dashboard modes:
   - Executive: board-level performance, concentration, coverage
   - Marketing: brand, pack, lifecycle, and category performance
@@ -60,16 +60,16 @@ GitHub does not send notifications for every public view, clone, or download. Us
 
 - `PPT`: boardroom-ready PowerPoint deck
 - `PDF`: dashboard report
-- `BI`: JSON handoff with schema, measures, visuals, and sample data
+- `BI`: JSON handoff with schema, measures, visuals, and the selected-state data extract
 - `CSV`: filtered/cleaned data
 - `HTML`: shareable dashboard report
 - `PNG`: image snapshot of the dashboard
 
 ## Large IMS/IQVIA Files
 
-For IMS/IQVIA-like `.xlsx` files, and for workbooks above roughly `50 MB`, the app switches to large workbook mode. It reads workbook metadata and samples the first analyzable rows without expanding the entire Excel file into memory. This makes 100-500 MB IMS/IQVIA datasets usable in the browser while keeping the dashboard responsive.
+For IMS/IQVIA-like `.xlsx` files, and for workbooks above roughly `50 MB`, the app switches to worker-backed large workbook mode. It reads workbook metadata and streams worksheet rows so final dashboard calculations are based on the loaded workbook rows, not a first-rows preview cut.
 
-Large mode is intentionally sample-based in the browser. MarketLens IQ will disclose that status in the dashboard and strategy plan so it never presents sampled analysis as full-market truth. For enterprise production use where every row must be processed, connect the same dashboard UI to a server-side ETL pipeline or warehouse.
+Very large browser workloads still depend on the user's machine memory and browser limits. If the browser cannot complete a file, export the workbook as CSV or use the enterprise backend pattern in `ENTERPRISE_FULL_DATA.md`.
 
 The included parser has been tested against an IMS workbook with more than 100,000 rows and 200+ columns. It uses streaming worksheet parsing so the sheet XML is never expanded into one giant browser string.
 
@@ -92,7 +92,7 @@ All recommendations are rule-based and calculated from the selected workbook, me
 - HTML, CSS, JavaScript
 - Chart.js
 - SheetJS for normal Excel parsing
-- Native browser streams for large `.xlsx` sampling
+- Web Worker and native browser streams for large `.xlsx` parsing
 - html2canvas, jsPDF, and PptxGenJS for exports
 - Lucide icons
 

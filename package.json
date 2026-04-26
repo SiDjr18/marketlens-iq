@@ -4,9 +4,9 @@
   "description": "Browser-based Excel, IMS, and IQVIA dashboard studio with professional exports.",
   "private": false,
   "scripts": {
-    "check": "node --check app.js",
+    "check": "node --check app.js && node --check ingestion-worker.js",
     "dev": "node server.js",
-    "build": "node --check app.js",
+    "build": "node --check app.js && node --check ingestion-worker.js",
     "start": "node server.js"
   },
   "keywords": [
