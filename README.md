@@ -48,6 +48,14 @@ For the best experience with large files, use a modern Chromium browser because 
 
 More deployment options are documented in `DEPLOYMENT.md`.
 
+## Free Cloud, Privacy, And Ownership
+
+MarketLens IQ is GitHub Pages deployable as a static site, so the standard public deployment path can run for free without a paid server. Users upload their own data in their own browser; this project does not include a backend that can read files from your local computer or collect uploaded workbooks.
+
+Only the repository owner can change this GitHub repository unless collaborators are explicitly added or a pull request is merged. Public users can view or fork public code, but they cannot directly change your original repository.
+
+GitHub does not send notifications for every public view, clone, or download. Use repository stars, forks, issues, pull requests, and the `Insights > Traffic` page for available visibility. To make change control stricter, enable branch protection in GitHub: `Settings > Branches > Add branch protection rule > main`, then require pull requests before merging.
+
 ## Exports
 
 - `PPT`: boardroom-ready PowerPoint deck
