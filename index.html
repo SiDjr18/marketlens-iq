@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MarketLens IQ - Excel & IMS Dashboard Studio</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Dashboard controls">
+        <div class="brand-row">
+          <div class="brand-mark" aria-hidden="true">ML</div>
+          <div>
+            <div class="brand-title">MarketLens IQ</div>
+            <div class="brand-subtitle">Market data to boardroom intelligence</div>
+          </div>
+        </div>
+
+        <section class="panel upload-panel">
+          <div id="dropZone" class="drop-zone" tabindex="0">
+            <i data-lucide="file-up" aria-hidden="true"></i>
+            <div>
+              <strong>Import workbook</strong>
+              <span>XLSX, XLS, CSV, or TSV</span>
+            </div>
+            <input id="fileInput" type="file" accept=".xlsx,.xls,.csv,.tsv" />
+          </div>
+          <div class="file-meta">
+            <span id="fileName">Sample dataset loaded</span>
+            <span id="rowCount">0 rows</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title">Model</div>
+          <label>
+            Corporate view
+            <select id="verticalSelect">
+              <option value="executive">Executive</option>
+              <option value="marketing">Marketing</option>
+              <option value="presales">Pre-sales & BD</option>
+              <option value="finance">Finance</option>
+              <option value="sales">Sales</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <label>
+            Sheet
+            <select id="sheetSelect"></select>
+          </label>
+          <label>
+            Metric
+            <select id="metricSelect"></select>
+          </label>
+          <label>
+            Dimension
+            <select id="dimensionSelect"></select>
+          </label>
+          <label>
+            Date
+            <select id="dateSelect"></select>
+          </label>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title">Criteria</div>
+          <label>
+            Segment filter
+            <select id="filterSelect"></select>
+          </label>
+          <label>
+            Ranking depth
+            <select id="topNSelect">
+              <option value="5">Top 5</option>
+              <option value="10" selected>Top 10</option>
+              <option value="15">Top 15</option>
+              <option value="25">Top 25</option>
+            </select>
+          </label>
+          <label class="toggle-line">
+            <input id="activeOnly" type="checkbox" />
+            Active IMS rows only
+          </label>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title">Layout</div>
+          <div class="segmented" role="group" aria-label="Dashboard density">
+            <button class="segment is-active" data-density="executive">Exec</button>
+            <button class="segment" data-density="analyst">Analyst</button>
+            <button class="segment" data-density="compact">Compact</button>
+          </div>
+          <label>
+            Theme
+            <select id="themeSelect">
+              <option value="studio">Meridian</option>
+              <option value="copper">Prism</option>
+              <option value="harbor">Alpine</option>
+            </select>
+          </label>
+          <label class="toggle-line">
+            <input id="includeNarrative" type="checkbox" checked />
+            Narrative insights
+          </label>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title">Exports</div>
+          <div class="export-grid">
+            <button class="action-btn" id="exportPpt" data-tooltip="Download PowerPoint deck">
+              <i data-lucide="presentation"></i>
+              PPT
+            </button>
+            <button class="action-btn" id="exportPdf" data-tooltip="Download PDF report">
+              <i data-lucide="file-text"></i>
+              PDF
+            </button>
+            <button class="action-btn" id="exportBi" data-tooltip="Download BI model JSON">
+              <i data-lucide="database"></i>
+              BI
+            </button>
+            <button class="action-btn" id="exportCsv" data-tooltip="Download cleaned CSV">
+              <i data-lucide="table"></i>
+              CSV
+            </button>
+            <button class="action-btn" id="exportHtml" data-tooltip="Download shareable HTML">
+              <i data-lucide="code-2"></i>
+              HTML
+            </button>
+            <button class="action-btn" id="exportPng" data-tooltip="Download dashboard image">
+              <i data-lucide="image-down"></i>
+              PNG
+            </button>
+          </div>
+        </section>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <div class="eyebrow">Auto-built dashboard</div>
+            <h1 id="dashboardTitle">Revenue Performance</h1>
+          </div>
+          <div class="topbar-actions">
+            <button class="icon-btn" id="resetCriteria" data-tooltip="Reset criteria">
+              <i data-lucide="rotate-ccw"></i>
+              <span>Reset</span>
+            </button>
+            <button class="icon-btn" id="refreshInsights" data-tooltip="Rebuild dashboard">
+              <i data-lucide="sparkles"></i>
+              <span>Analyze</span>
+            </button>
+            <button class="icon-btn" id="printDashboard" data-tooltip="Open browser print">
+              <i data-lucide="printer"></i>
+              <span>Print</span>
+            </button>
+          </div>
+        </header>
+
+        <section id="dashboardSurface" class="dashboard-surface" aria-label="Generated dashboard">
+          <div class="summary-strip">
+            <div>
+              <span id="dataSourceLabel">Sample data</span>
+              <strong id="summaryHeadline">Upload a workbook or use the sample board.</strong>
+            </div>
+            <div class="health-score">
+              <span>Data health</span>
+              <strong id="healthScore">98%</strong>
+            </div>
+          </div>
+
+          <section id="executiveGrid" class="executive-grid" aria-label="Executive summary"></section>
+
+          <section id="kpiGrid" class="kpi-grid"></section>
+
+          <section class="chart-grid">
+            <article class="chart-panel chart-wide">
+              <div class="chart-head">
+                <div>
+                  <h2 id="trendTitle">Monthly trend</h2>
+                  <p id="trendMeta">Metric over time</p>
+                </div>
+                <span id="trendBadge" class="badge">Trend</span>
+              </div>
+              <div class="chart-box">
+                <canvas id="trendChart"></canvas>
+              </div>
+            </article>
+
+            <article class="chart-panel">
+              <div class="chart-head">
+                <div>
+                  <h2 id="barTitle">Top segments</h2>
+                  <p id="barMeta">Ranked by selected metric</p>
+                </div>
+                <span class="badge">Rank</span>
+              </div>
+              <div class="chart-box">
+                <canvas id="barChart"></canvas>
+              </div>
+            </article>
+
+            <article class="chart-panel">
+              <div class="chart-head">
+                <div>
+                  <h2 id="donutTitle">Share mix</h2>
+                  <p id="donutMeta">Contribution by segment</p>
+                </div>
+                <span class="badge">Mix</span>
+              </div>
+              <div class="chart-box">
+                <canvas id="donutChart"></canvas>
+              </div>
+            </article>
+          </section>
+
+          <section class="lower-grid">
+            <article class="insight-panel">
+              <div class="chart-head">
+                <div>
+                  <h2>Analyst notes</h2>
+                  <p id="insightMeta">Generated from the selected workbook</p>
+                </div>
+                <span class="badge">AI-style</span>
+              </div>
+              <ul id="insightList" class="insight-list"></ul>
+            </article>
+
+            <article class="table-panel">
+              <div class="chart-head">
+                <div>
+                  <h2>Data preview</h2>
+                  <p id="tableMeta">First rows after import</p>
+                </div>
+                <span class="badge">Rows</span>
+              </div>
+              <div class="table-wrap">
+                <table id="previewTable"></table>
+              </div>
+            </article>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>

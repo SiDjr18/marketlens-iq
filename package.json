@@ -1,0 +1,20 @@
+{
+  "name": "marketlens-iq",
+  "version": "1.0.0",
+  "description": "Browser-based Excel, IMS, and IQVIA dashboard studio with professional exports.",
+  "private": false,
+  "scripts": {
+    "check": "node --check app.js"
+  },
+  "keywords": [
+    "dashboard",
+    "excel",
+    "ims",
+    "iqvia",
+    "bi",
+    "ppt",
+    "pdf",
+    "pharma"
+  ],
+  "license": "MIT"
+}
