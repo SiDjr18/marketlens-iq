@@ -5,6 +5,8 @@
   "private": false,
   "scripts": {
     "check": "node --check app.js",
+    "dev": "node server.js",
+    "build": "node --check app.js",
     "start": "node server.js"
   },
   "keywords": [

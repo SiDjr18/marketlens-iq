@@ -21,7 +21,18 @@ const state = {
   rowLimit: 0,
   analysisNotes: [],
   domain: "generic",
-  measureColumns: []
+  measureColumns: [],
+  columnMap: {},
+  strategicFilters: {
+    marketType: [],
+    companyType: [],
+    productType: [],
+    brand: [],
+    therapy: [],
+    molecule: [],
+    company: []
+  },
+  brandPlanGenerated: false
 };
 
 const els = {};
@@ -46,6 +57,28 @@ function cacheElements() {
     "dimensionSelect",
     "dateSelect",
     "filterSelect",
+    "filterMarketType",
+    "filterCompanyType",
+    "filterProductType",
+    "filterBrand",
+    "filterTherapy",
+    "filterMolecule",
+    "filterCompany",
+    "clearStrategicFilters",
+    "generateBrandPlan",
+    "mappingWarnings",
+    "mapBrand",
+    "mapTherapy",
+    "mapMolecule",
+    "mapCompany",
+    "mapMarketType",
+    "mapCompanyType",
+    "mapProductType",
+    "mapMatSales",
+    "mapMonthlySales",
+    "mapUnitSales",
+    "mapVolumeSales",
+    "mapValueSales",
     "topNSelect",
     "activeOnly",
     "themeSelect",
@@ -68,6 +101,16 @@ function cacheElements() {
     "strategyTitle",
     "strategyMeta",
     "strategyGrid",
+    "positioningMeta",
+    "positioningGrid",
+    "heatMapMeta",
+    "heatMapGrid",
+    "frameworkMeta",
+    "frameworkGrid",
+    "verticalPlanMeta",
+    "verticalPlanGrid",
+    "brandPlanMeta",
+    "brandPlanOutput",
     "tableMeta",
     "previewTable",
     "dashboardSurface",
@@ -153,6 +196,31 @@ function bindEvents() {
     renderDashboard();
   });
 
+  getStrategicFilterConfig().forEach(({ role, id }) => {
+    els[id].addEventListener("change", () => {
+      state.strategicFilters[role] = getSelectedValues(els[id]);
+      updateStrategicFilterOptions(role);
+      renderDashboard();
+    });
+  });
+
+  getMappingConfig().forEach(({ role, id }) => {
+    els[id].addEventListener("change", () => {
+      state.columnMap[role] = els[id].value;
+      state.filterValue = "__all__";
+      if (role === "valueSales" || role === "matSales" || role === "monthlySales" || role === "unitSales" || role === "volumeSales") {
+        state.metric = getPreferredMetric();
+      }
+      if (role === "brand" || role === "therapy" || role === "molecule" || role === "company") {
+        state.dimension = state.columnMap[role] || state.dimension;
+      }
+      clearInvalidStrategicFilters();
+      updateControls();
+      renderDashboard();
+      showToast("Column mapping updated.");
+    });
+  });
+
   els.topNSelect.addEventListener("change", () => {
     state.topN = Number(els.topNSelect.value) || 10;
     renderDashboard();
@@ -194,10 +262,25 @@ function bindEvents() {
     state.filterValue = "__all__";
     state.topN = 10;
     state.activeOnly = false;
+    clearStrategicFilterState();
+    state.brandPlanGenerated = false;
     applyVerticalPreset();
     updateControls();
     renderDashboard();
     showToast("Criteria reset.");
+  });
+
+  els.clearStrategicFilters.addEventListener("click", () => {
+    clearStrategicFilterState();
+    updateControls();
+    renderDashboard();
+    showToast("Strategic filters cleared.");
+  });
+
+  els.generateBrandPlan.addEventListener("click", () => {
+    state.brandPlanGenerated = true;
+    renderBrandPlan();
+    showToast("Brand plan generated from selected data.");
   });
 
   els.printDashboard.addEventListener("click", () => window.print());
@@ -307,6 +390,9 @@ function setRows(rows) {
   state.rows = enrichRowsForAnalysis(rows.filter((row) => Object.values(row).some((value) => String(value ?? "").trim() !== "")));
   state.columns = getColumns(state.rows);
   state.profile = profileColumns(state.rows, state.columns);
+  state.columnMap = autoMapColumns();
+  clearInvalidStrategicFilters();
+  state.brandPlanGenerated = false;
   inferSelections(false);
   applyVerticalPreset();
   updateControls();
@@ -581,6 +667,9 @@ function updateControls() {
   els.topNSelect.value = String(state.topN);
   els.activeOnly.checked = state.activeOnly;
   updateFilterOptions();
+  updateMappingControls();
+  updateStrategicFilterOptions();
+  renderMappingWarnings();
   els.fileName.textContent = state.fileName;
   els.rowCount.textContent = `${formatNumber(getActiveRows().length)} of ${formatNumber(state.rows.length)} rows`;
 }
@@ -615,6 +704,7 @@ function getActiveRows() {
   if (state.filterValue && state.filterValue !== "__all__" && state.dimension) {
     rows = rows.filter((row) => String(row[state.dimension] ?? "Unassigned").trim() === state.filterValue);
   }
+  rows = applyStrategicFilters(rows);
   if (state.activeOnly && state.domain === "ims") {
     rows = rows.filter((row) => (parseNumber(row["IMS Active Periods"]) ?? 0) > 0);
   }
@@ -640,6 +730,165 @@ function setOptions(select, options, selected, emptyLabel) {
   });
 }
 
+function getStrategicFilterConfig() {
+  return [
+    { role: "marketType", id: "filterMarketType", label: "Market type" },
+    { role: "companyType", id: "filterCompanyType", label: "Company type" },
+    { role: "productType", id: "filterProductType", label: "Product type" },
+    { role: "brand", id: "filterBrand", label: "Brand" },
+    { role: "therapy", id: "filterTherapy", label: "Therapy" },
+    { role: "molecule", id: "filterMolecule", label: "Molecule" },
+    { role: "company", id: "filterCompany", label: "Company / competitor" }
+  ];
+}
+
+function getMappingConfig() {
+  return [
+    { role: "brand", id: "mapBrand", label: "Brand", aliases: ["brands", "brand", "productname", "product"] },
+    { role: "therapy", id: "mapTherapy", label: "Therapy", aliases: ["therapy", "supergroup", "group", "subgroup", "therapeuticclass", "market"] },
+    { role: "molecule", id: "mapMolecule", label: "Molecule", aliases: ["moleculedesc", "molecule", "composition", "generic"] },
+    { role: "company", id: "mapCompany", label: "Company", aliases: ["manufactdesc", "company", "manufacturer", "corporation", "marketer"] },
+    { role: "marketType", id: "mapMarketType", label: "Market type", aliases: ["acutechronic", "markettype", "acute", "chronic"] },
+    { role: "companyType", id: "mapCompanyType", label: "Company type", aliases: ["indianmnc", "companytype", "ownership", "mnc"] },
+    { role: "productType", id: "mapProductType", label: "Product type", aliases: ["plaincombination", "plain", "combination", "producttype"] },
+    { role: "matSales", id: "mapMatSales", label: "MAT sales", aliases: ["mat", "imstotal", "movingannualtotal"] },
+    { role: "monthlySales", id: "mapMonthlySales", label: "Monthly sales", aliases: ["imslatest", "monthlysales", "monthsales", "latest"] },
+    { role: "unitSales", id: "mapUnitSales", label: "Unit sales", aliases: ["unit", "units", "qty", "quantity"] },
+    { role: "volumeSales", id: "mapVolumeSales", label: "Volume sales", aliases: ["volume", "vol", "kg", "litre", "liter"] },
+    { role: "valueSales", id: "mapValueSales", label: "Value sales", aliases: ["value", "sales", "revenue", "amount", "imstotal"] }
+  ];
+}
+
+function autoMapColumns() {
+  const map = {};
+  const numeric = state.profile?.numeric || [];
+  const allColumns = state.columns || [];
+  getMappingConfig().forEach(({ role, aliases }) => {
+    const pool = isMeasureRole(role) ? [...numeric, ...allColumns] : allColumns;
+    map[role] = pickByRank(pool, aliases) || "";
+  });
+  if (!map.company && allColumns.includes("MANUFACT. DESC")) map.company = "MANUFACT. DESC";
+  if (!map.brand && allColumns.includes("BRANDS")) map.brand = "BRANDS";
+  if (!map.therapy && allColumns.includes("GROUP")) map.therapy = "GROUP";
+  if (!map.molecule && allColumns.includes("MOLECULE_DESC")) map.molecule = "MOLECULE_DESC";
+  if (!map.marketType && allColumns.includes("ACUTE_CHRONIC")) map.marketType = "ACUTE_CHRONIC";
+  if (!map.companyType && allColumns.includes("INDIAN_MNC")) map.companyType = "INDIAN_MNC";
+  if (!map.productType && allColumns.includes("Plain/Combination")) map.productType = "Plain/Combination";
+  if (!map.matSales && allColumns.includes("IMS Total")) map.matSales = "IMS Total";
+  if (!map.monthlySales && allColumns.includes("IMS Latest")) map.monthlySales = "IMS Latest";
+  if (!map.valueSales) map.valueSales = map.matSales || map.monthlySales || numeric[0] || "";
+  if (!map.unitSales) map.unitSales = pickPeriodColumn(/unit|qty|quantity/i) || "";
+  if (!map.volumeSales) map.volumeSales = pickPeriodColumn(/vol|volume/i) || "";
+  return map;
+}
+
+function isMeasureRole(role) {
+  return ["matSales", "monthlySales", "unitSales", "volumeSales", "valueSales"].includes(role);
+}
+
+function pickPeriodColumn(pattern) {
+  return state.columns.find((column) => pattern.test(String(column))) || "";
+}
+
+function updateMappingControls() {
+  const allOptions = ["", ...state.columns];
+  getMappingConfig().forEach(({ role, id }) => {
+    setOptions(els[id], allOptions, state.columnMap[role] || "", "(not mapped)");
+  });
+}
+
+function renderMappingWarnings() {
+  const required = ["brand", "therapy", "molecule", "company", "marketType", "companyType", "productType", "valueSales"];
+  const missing = required
+    .filter((role) => !state.columnMap[role])
+    .map((role) => getMappingConfig().find((item) => item.role === role)?.label || role);
+  if (!missing.length) {
+    els.mappingWarnings.innerHTML = `<div class="mapping-ok">All key pharma fields mapped.</div>`;
+    return;
+  }
+  els.mappingWarnings.innerHTML = `<div class="mapping-warning">Missing: ${escapeHtml(missing.join(", "))}. Use manual mapping if the uploaded column uses another name.</div>`;
+}
+
+function updateStrategicFilterOptions(changedRole) {
+  getStrategicFilterConfig().forEach(({ role, id, label }) => {
+    const column = state.columnMap[role];
+    const selected = role === changedRole ? state.strategicFilters[role] : state.strategicFilters[role].filter(Boolean);
+    const baseRows = applyStrategicFilters(state.rows, role);
+    const values = column ? getTopCategoricalValues(baseRows, column, 160) : [];
+    els[id].innerHTML = "";
+    if (!column) {
+      const option = document.createElement("option");
+      option.textContent = `Map ${label} first`;
+      option.disabled = true;
+      els[id].appendChild(option);
+      return;
+    }
+    values.forEach((value) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value;
+      option.selected = selected.includes(value);
+      els[id].appendChild(option);
+    });
+    state.strategicFilters[role] = selected.filter((value) => values.includes(value));
+  });
+}
+
+function getTopCategoricalValues(rows, column, limit) {
+  const metric = getPreferredMetric();
+  const grouped = groupBySum(rows, column, metric).sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+  return grouped.map((item) => item.name).filter((value) => value && value !== "Unassigned").slice(0, limit);
+}
+
+function getSelectedValues(select) {
+  return Array.from(select.selectedOptions).map((option) => option.value).filter(Boolean);
+}
+
+function clearStrategicFilterState() {
+  Object.keys(state.strategicFilters).forEach((role) => {
+    state.strategicFilters[role] = [];
+  });
+}
+
+function clearInvalidStrategicFilters() {
+  Object.keys(state.strategicFilters).forEach((role) => {
+    if (!state.columnMap[role]) state.strategicFilters[role] = [];
+  });
+}
+
+function applyStrategicFilters(rows, skipRole) {
+  return getStrategicFilterConfig().reduce((currentRows, { role }) => {
+    if (role === skipRole) return currentRows;
+    const column = state.columnMap[role];
+    const selected = state.strategicFilters[role] || [];
+    if (!column || !selected.length) return currentRows;
+    const allowed = new Set(selected.map((value) => normalizeFilterValue(value)));
+    return currentRows.filter((row) => allowed.has(normalizeFilterValue(row[column])));
+  }, rows);
+}
+
+function normalizeFilterValue(value) {
+  return String(value ?? "Unassigned").trim() || "Unassigned";
+}
+
+function getPreferredMetric(role = "valueSales") {
+  return state.columnMap[role] || state.columnMap.matSales || state.columnMap.monthlySales || state.metric || state.profile?.numeric?.[0] || "";
+}
+
+function getPrimaryDimension() {
+  return state.columnMap.brand || state.columnMap.company || state.columnMap.therapy || state.dimension || "";
+}
+
+function getSelectedFocusLabel() {
+  const priority = ["brand", "molecule", "therapy", "company", "marketType", "companyType", "productType"];
+  for (const role of priority) {
+    const values = state.strategicFilters[role] || [];
+    if (values.length) return values.slice(0, 3).join(", ");
+  }
+  const grouped = groupBySum(getActiveRows(), getPrimaryDimension(), getPreferredMetric()).sort((a, b) => b.value - a.value);
+  return grouped[0]?.name || "selected market";
+}
+
 function renderDashboard() {
   applyThemeAndDensity();
   renderShellText();
@@ -648,6 +897,11 @@ function renderDashboard() {
   renderCharts();
   renderInsights();
   renderStrategyPlan();
+  renderCompetitorPositioning();
+  renderHeatMap();
+  renderFrameworkOutputs();
+  renderVerticalPlans();
+  renderBrandPlan();
   renderTablePreview();
   hydrateIcons();
 }
@@ -1148,6 +1402,264 @@ function getRoleGuidance(top, bottom, share, top3Share) {
 
 function metricSafe(metric) {
   return metric || "performance";
+}
+
+function buildCompetitiveSet() {
+  const rows = getActiveRows();
+  const metric = getPreferredMetric("valueSales");
+  const monthlyMetric = getPreferredMetric("monthlySales");
+  const unitMetric = state.columnMap.unitSales || metric;
+  const volumeMetric = state.columnMap.volumeSales || metric;
+  const dimension = state.columnMap.brand || state.columnMap.company || state.dimension;
+  const total = sum(rows.map((row) => parseNumber(row[metric]) ?? 0));
+  const periodGrowth = calculateTrend(rows, "", metric);
+  const grouped = groupBySum(rows, dimension, metric).sort((a, b) => b.value - a.value);
+  const rowsByDimension = new Map();
+  rows.forEach((row) => {
+    const key = normalizeFilterValue(row[dimension]);
+    if (!rowsByDimension.has(key)) rowsByDimension.set(key, []);
+    rowsByDimension.get(key).push(row);
+  });
+  const entries = grouped.map((item, index) => {
+    const itemRows = rowsByDimension.get(item.name) || [];
+    const latest = sum(itemRows.map((row) => parseNumber(row[monthlyMetric]) ?? 0));
+    const units = sum(itemRows.map((row) => parseNumber(row[unitMetric]) ?? 0));
+    const volume = sum(itemRows.map((row) => parseNumber(row[volumeMetric]) ?? 0));
+    const growth = getRowsGrowth(itemRows, metric);
+    return {
+      ...item,
+      rank: index + 1,
+      share: total ? (item.value / total) * 100 : 0,
+      matValue: item.value,
+      latest,
+      units,
+      volume,
+      growth
+    };
+  });
+  return {
+    rows,
+    metric,
+    dimension,
+    total,
+    entries,
+    focus: getSelectedFocusLabel(),
+    marketGrowth: parseNumber(periodGrowth.value) ?? 0
+  };
+}
+
+function getRowsGrowth(rows, metric) {
+  if (state.domain === "ims" && state.measureColumns.length >= 2) {
+    const previousColumn = state.measureColumns[state.measureColumns.length - 2];
+    const currentColumn = state.measureColumns[state.measureColumns.length - 1];
+    const previous = sum(rows.map((row) => parseNumber(row[previousColumn]) ?? 0));
+    const current = sum(rows.map((row) => parseNumber(row[currentColumn]) ?? 0));
+    return previous ? ((current - previous) / Math.abs(previous)) * 100 : 0;
+  }
+  return parseNumber(calculateTrend(rows, state.dateColumn, metric).value) ?? 0;
+}
+
+function renderCompetitorPositioning() {
+  const comp = buildCompetitiveSet();
+  els.positioningMeta.textContent = `${formatNumber(comp.rows.length)} rows filtered; ${titleCase(comp.dimension)} ranked by ${titleCase(comp.metric)}`;
+  if (!comp.entries.length) {
+    els.positioningGrid.innerHTML = `<div class="empty-state">Upload or select IMS data to build competitor positioning.</div>`;
+    return;
+  }
+  const leader = comp.entries[0];
+  const focus = comp.entries.find((item) => item.name === comp.focus) || leader;
+  const topCompetitors = comp.entries.filter((item) => item.name !== focus.name).slice(0, 5);
+  const gap = Math.max(0, leader.value - focus.value);
+  const priceProxy = focus.volume ? focus.value / focus.volume : focus.units ? focus.value / focus.units : 0;
+  const summaryCards = [
+    ["Market share", `${formatNumber(focus.share)}%`, `${focus.name} share of selected universe`],
+    ["Growth", `${focus.growth >= 0 ? "+" : ""}${formatNumber(focus.growth)}%`, "Latest period movement"],
+    ["Rank", `#${focus.rank}`, `${titleCase(comp.dimension)} rank`],
+    ["MAT value", formatMetric(focus.matValue, comp.metric), `Gap to leader: ${formatMetric(gap, comp.metric)}`],
+    ["Units", formatNumber(focus.units), "Mapped unit sales"],
+    ["Volume", formatNumber(focus.volume), "Mapped volume sales"],
+    ["Price proxy", priceProxy ? formatMetric(priceProxy, comp.metric) : "n/a", "Value divided by units or volume"],
+    ["Opportunity gap", formatMetric(gap, comp.metric), gap ? "Close through share capture" : "Leader position"]
+  ];
+  const rows = comp.entries.slice(0, state.topN).map((item) => `
+    <tr>
+      <td>${item.rank}</td>
+      <td>${escapeHtml(item.name)}</td>
+      <td>${formatNumber(item.share)}%</td>
+      <td>${item.growth >= 0 ? "+" : ""}${formatNumber(item.growth)}%</td>
+      <td>${formatMetric(item.value, comp.metric)}</td>
+      <td>${formatNumber(item.units)}</td>
+      <td>${formatNumber(item.volume)}</td>
+    </tr>
+  `).join("");
+  els.positioningGrid.innerHTML = `
+    <div class="positioning-cards">
+      ${summaryCards.map(([label, value, note]) => `
+        <section class="mini-metric">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(value)}</strong>
+          <small>${escapeHtml(note)}</small>
+        </section>
+      `).join("")}
+    </div>
+    <div class="competitor-list">
+      <strong>Top competitors:</strong> ${topCompetitors.map((item) => escapeHtml(item.name)).join(", ") || "No competitor split available"}
+    </div>
+    <div class="table-wrap compact-table">
+      <table>
+        <thead><tr><th>Rank</th><th>${escapeHtml(titleCase(comp.dimension))}</th><th>Share</th><th>Growth</th><th>Value</th><th>Units</th><th>Volume</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderHeatMap() {
+  const comp = buildCompetitiveSet();
+  const entries = comp.entries.slice(0, Math.max(8, state.topN));
+  if (!entries.length) {
+    els.heatMapGrid.innerHTML = `<div class="empty-state">Heat map will appear after upload.</div>`;
+    return;
+  }
+  const avgShare = entries.length ? sum(entries.map((item) => item.share)) / entries.length : 0;
+  const avgGrowth = entries.length ? sum(entries.map((item) => item.growth)) / entries.length : 0;
+  const quadrants = [
+    { key: "defend", title: "Defend & Grow", test: (item) => item.growth >= avgGrowth && item.share >= avgShare },
+    { key: "invest", title: "Invest & Capture", test: (item) => item.growth >= avgGrowth && item.share < avgShare },
+    { key: "optimize", title: "Optimize & Harvest", test: (item) => item.growth < avgGrowth && item.share >= avgShare },
+    { key: "reposition", title: "Reposition or Exit", test: (item) => item.growth < avgGrowth && item.share < avgShare }
+  ];
+  els.heatMapMeta.textContent = `Thresholds: ${formatNumber(avgShare)}% share and ${avgGrowth >= 0 ? "+" : ""}${formatNumber(avgGrowth)}% growth`;
+  els.heatMapGrid.innerHTML = quadrants.map((quadrant) => {
+    const items = entries.filter(quadrant.test).slice(0, 8);
+    return `
+      <section class="quadrant ${quadrant.key}">
+        <h3>${quadrant.title}</h3>
+        <div class="quadrant-items">
+          ${items.length ? items.map((item) => `
+            <span title="Share ${formatNumber(item.share)}%, growth ${formatNumber(item.growth)}%">
+              ${escapeHtml(item.name)}
+              <small>${formatNumber(item.share)}% | ${item.growth >= 0 ? "+" : ""}${formatNumber(item.growth)}%</small>
+            </span>
+          `).join("") : "<em>No competitor in this quadrant</em>"}
+        </div>
+      </section>
+    `;
+  }).join("");
+}
+
+function renderFrameworkOutputs() {
+  const framework = buildFrameworkOutputs();
+  els.frameworkMeta.textContent = `${framework.focus} strategy logic from selected filters`;
+  els.frameworkGrid.innerHTML = framework.cards.map((card) => `
+    <section class="framework-card">
+      <h3>${escapeHtml(card.title)}</h3>
+      <p>${escapeHtml(card.body)}</p>
+    </section>
+  `).join("");
+}
+
+function buildFrameworkOutputs() {
+  const comp = buildCompetitiveSet();
+  const focus = comp.entries.find((item) => item.name === comp.focus) || comp.entries[0] || { name: "Selected brand", share: 0, growth: 0, rank: 0, value: 0 };
+  const leader = comp.entries[0] || focus;
+  const intensity = comp.entries.length > 6 ? "high" : comp.entries.length > 2 ? "moderate" : "low";
+  const quadrant = focus.growth >= 0 && focus.share >= 10 ? "Defend & Grow" : focus.growth >= 0 ? "Invest & Capture" : focus.share >= 10 ? "Optimize & Harvest" : "Reposition or Exit";
+  const cards = [
+    ["SWOT", `Strength: rank #${focus.rank} with ${formatNumber(focus.share)}% share. Weakness: ${leader.name === focus.name ? "leadership must be defended" : `gap to ${leader.name}`}. Opportunity: capture under-served competitor pockets. Threat: ${intensity} competitive intensity.`],
+    ["BCG Matrix", `${focus.name} sits in ${quadrant}. Use share and growth together before committing spend.`],
+    ["Ansoff Matrix", `Prioritize market penetration in mapped therapy/company pockets, then product development for molecule or pack whitespace if growth remains above market.`],
+    ["4Ps Marketing Mix", `Product: sharpen molecule/pack promise. Price: compare value per unit/volume. Place: focus field coverage where share is low. Promotion: align brand message with therapy drivers.`],
+    ["STP", `Segment by therapy, molecule, market type, and company type; target high-growth low-share pockets; position ${focus.name} against the top competitor with evidence-led differentiation.`],
+    ["Porter's Five Forces", `Rivalry is ${intensity}; buyer power rises when many competitors show similar value. Defend through KOL advocacy, supply reliability, and differentiated clinical/brand evidence.`],
+    ["Brand Equity", `Build salience, credibility, consideration, and loyalty by linking brand promise to measurable share, trend, and prescriber/customer activation KPIs.`],
+    ["Go-To-Market", `Translate opportunity into priority accounts, call plan, digital journey, KOL calendar, sampling or access plan, and weekly sales governance.`],
+    ["Opportunity Matrix", `Score pockets by value, growth, competitive gap, execution ease, and supply readiness; fund high-value high-growth gaps first.`]
+  ];
+  return { focus: focus.name, cards: cards.map(([title, body]) => ({ title, body })) };
+}
+
+function renderVerticalPlans() {
+  const plans = buildVerticalPlans();
+  els.verticalPlanMeta.textContent = `Action plan for ${formatNumber(getActiveRows().length)} selected rows`;
+  els.verticalPlanGrid.innerHTML = plans.map((plan) => `
+    <section class="framework-card">
+      <h3>${escapeHtml(plan.title)}</h3>
+      <p>${escapeHtml(plan.body)}</p>
+    </section>
+  `).join("");
+}
+
+function buildVerticalPlans() {
+  const comp = buildCompetitiveSet();
+  const focus = comp.entries.find((item) => item.name === comp.focus) || comp.entries[0] || { name: "selected brand", share: 0, growth: 0 };
+  return [
+    { title: "Marketing team", body: `Build campaigns around ${focus.name} with message tracks for awareness, conversion, retention, and competitor switch.` },
+    { title: "Branding team", body: `Codify positioning, claims, visual language, and core message based on therapy, molecule, and competitor gaps.` },
+    { title: "Sales team", body: `Turn ranking into coverage priorities, territory gap reviews, objection handling, and monthly rank movement goals.` },
+    { title: "Finance team", body: `Allocate base budget to defend proven share and test budget to high-growth low-share pockets with KPI gates.` },
+    { title: "BD / Pre-sales team", body: `Use whitespace, competitor intensity, and therapy attractiveness to shape partnership and account-entry narratives.` },
+    { title: "Portfolio strategy", body: `Classify assets into defend, invest, optimize, and exit paths using the heat-map quadrant.` },
+    { title: "Leadership / CXO", body: `Review share, growth, rank, opportunity gap, risk, and resource asks in a single monthly governance pack.` }
+  ];
+}
+
+function renderBrandPlan() {
+  if (!state.brandPlanGenerated) {
+    els.brandPlanOutput.innerHTML = `<div class="empty-state">Select filters, then click Generate Brand Plan.</div>`;
+    return;
+  }
+  const sections = buildBrandPlan();
+  els.brandPlanMeta.textContent = `${sections.focus} plan generated from ${formatNumber(getActiveRows().length)} rows`;
+  els.brandPlanOutput.innerHTML = sections.items.map((item) => `
+    <section class="brand-plan-section">
+      <h3>${escapeHtml(item.title)}</h3>
+      <p>${escapeHtml(item.body)}</p>
+    </section>
+  `).join("");
+}
+
+function buildBrandPlan() {
+  const comp = buildCompetitiveSet();
+  const focus = comp.entries.find((item) => item.name === comp.focus) || comp.entries[0] || { name: "Selected brand", share: 0, growth: 0, rank: 0, value: 0 };
+  const leader = comp.entries[0] || focus;
+  const therapy = selectedOrMappedValue("therapy");
+  const molecule = selectedOrMappedValue("molecule");
+  const marketType = selectedOrMappedValue("marketType");
+  const companyType = selectedOrMappedValue("companyType");
+  const productType = selectedOrMappedValue("productType");
+  const items = [
+    ["Executive summary", `${focus.name} ranks #${focus.rank} with ${formatNumber(focus.share)}% share and ${focus.growth >= 0 ? "+" : ""}${formatNumber(focus.growth)}% latest growth in the selected universe.`],
+    ["Market overview", `Selected market: ${marketType}; company type: ${companyType}; product type: ${productType}. Total selected value is ${formatMetric(comp.total, comp.metric)}.`],
+    ["Therapy landscape", `Therapy focus is ${therapy}. Use growth and share pockets to decide where to defend, invest, optimize, or reposition.`],
+    ["Brand performance", `${focus.name} MAT/value is ${formatMetric(focus.value, comp.metric)} with rank #${focus.rank}. Gap to leader ${leader.name} is ${formatMetric(Math.max(0, leader.value - focus.value), comp.metric)}.`],
+    ["Competitor analysis", `Primary competitor benchmark is ${leader.name}. Compare market share, growth, price proxy, units, volume, and field execution.`],
+    ["Customer segmentation", `Segment doctors/customers by therapy potential, molecule relevance, brand switching likelihood, and account access.`],
+    ["Doctor/customer targeting", `Target high-value accounts in high-growth low-share cells first, then defend top-prescribing pockets.`],
+    ["Positioning statement", `For priority ${therapy} customers seeking reliable outcomes in ${molecule}, ${focus.name} should be positioned as a differentiated, evidence-led option with clear value versus competitors.`],
+    ["Core brand message", `Deliver a concise message linking efficacy/benefit, patient or customer relevance, access, and trust proof.`],
+    ["Growth drivers", `Share capture, portfolio/pack focus, improved coverage, KOL advocacy, digital activation, and supply reliability.`],
+    ["Barriers", `Competitive intensity, low differentiation, access friction, field execution gaps, and budget constraints.`],
+    ["Tactical plan", `Deploy field detailing, digital content, KOL programs, therapy education, competitor-switch aids, and periodic performance reviews.`],
+    ["Sales force strategy", `Prioritize accounts by value gap and growth; use weekly call plan, objection scripts, and rank/share scorecards.`],
+    ["Digital marketing strategy", `Run targeted content journeys for awareness, consideration, and conversion with KPI tracking by segment.`],
+    ["KOL strategy", `Identify therapy advocates, build evidence discussion forums, and connect KOL activity to account activation.`],
+    ["Financial forecast", `Base case follows latest growth; upside case closes 25% of the gap to leader; downside case assumes flat share and requires spend containment.`],
+    ["KPIs", `Market share, growth %, rank, MAT value, monthly trend, units, volume, price proxy, opportunity gap, campaign engagement, call coverage.`],
+    ["90-day plan", `Validate mapping, lock priority segments, activate sales message, and launch first campaign/control dashboard.`],
+    ["180-day plan", `Scale winning pockets, refine budget allocation, expand KOL and digital programs, and review competitor response.`],
+    ["1-year action plan", `Institutionalize portfolio governance, full-year forecast, launch/line-extension decisions, and CXO performance review.`]
+  ];
+  return { focus: focus.name, items: items.map(([title, body]) => ({ title, body })) };
+}
+
+function selectedOrMappedValue(role) {
+  const selected = state.strategicFilters[role] || [];
+  if (selected.length) return selected.slice(0, 3).join(", ");
+  const column = state.columnMap[role];
+  if (!column) return "not mapped";
+  const value = getTopCategoricalValues(getActiveRows(), column, 1)[0];
+  return value || "not available";
 }
 
 function renderTablePreview() {

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>MarketLens IQ - Excel & IMS Dashboard Studio</title>
-    <link rel="stylesheet" href="./styles.css?v=20260426-upload-only" />
+    <link rel="stylesheet" href="./styles.css?v=20260426-pharma-analytics" />
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -96,6 +96,69 @@
           </label>
         </section>
 
+        <section class="panel strategic-panel">
+          <div class="panel-title">Strategic Filters</div>
+          <div class="filter-help">Use Ctrl/Shift to select multiple values. All filters work together.</div>
+          <label>
+            Market type
+            <select id="filterMarketType" multiple size="3"></select>
+          </label>
+          <label>
+            Company type
+            <select id="filterCompanyType" multiple size="3"></select>
+          </label>
+          <label>
+            Product type
+            <select id="filterProductType" multiple size="3"></select>
+          </label>
+          <label>
+            Brand-wise
+            <select id="filterBrand" multiple size="4"></select>
+          </label>
+          <label>
+            Therapy-wise
+            <select id="filterTherapy" multiple size="4"></select>
+          </label>
+          <label>
+            Molecule-wise
+            <select id="filterMolecule" multiple size="4"></select>
+          </label>
+          <label>
+            Company / competitor
+            <select id="filterCompany" multiple size="4"></select>
+          </label>
+          <button class="action-btn full-width" id="clearStrategicFilters" data-tooltip="Clear pharma filters">
+            <i data-lucide="filter-x"></i>
+            Clear filters
+          </button>
+          <button class="action-btn full-width primary-action" id="generateBrandPlan" data-tooltip="Generate pharma brand plan">
+            <i data-lucide="clipboard-list"></i>
+            Generate Brand Plan
+          </button>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title">Column Mapping</div>
+          <div id="mappingWarnings" class="mapping-warnings"></div>
+          <details>
+            <summary>Review / fix mapping</summary>
+            <div class="mapping-grid">
+              <label>Brand<select id="mapBrand"></select></label>
+              <label>Therapy<select id="mapTherapy"></select></label>
+              <label>Molecule<select id="mapMolecule"></select></label>
+              <label>Company<select id="mapCompany"></select></label>
+              <label>Market type<select id="mapMarketType"></select></label>
+              <label>Company type<select id="mapCompanyType"></select></label>
+              <label>Product type<select id="mapProductType"></select></label>
+              <label>MAT sales<select id="mapMatSales"></select></label>
+              <label>Monthly sales<select id="mapMonthlySales"></select></label>
+              <label>Unit sales<select id="mapUnitSales"></select></label>
+              <label>Volume sales<select id="mapVolumeSales"></select></label>
+              <label>Value sales<select id="mapValueSales"></select></label>
+            </div>
+          </details>
+        </section>
+
         <section class="panel">
           <div class="panel-title">Layout</div>
           <div class="segmented" role="group" aria-label="Dashboard density">
@@ -173,7 +236,7 @@
         <section id="dashboardSurface" class="dashboard-surface" aria-label="Generated dashboard">
           <div class="summary-strip">
             <div>
-              <span id="dataSourceLabel">Sample data</span>
+              <span id="dataSourceLabel">No workbook loaded</span>
               <strong id="summaryHeadline">Upload your IMS/IQVIA workbook to generate the dashboard.</strong>
             </div>
             <div class="health-score">
@@ -263,11 +326,68 @@
               </div>
             </article>
           </section>
+
+          <section class="pharma-grid">
+            <article class="insight-panel">
+              <div class="chart-head">
+                <div>
+                  <h2>Competitor positioning</h2>
+                  <p id="positioningMeta">Market share, rank, value, growth, unit and volume view</p>
+                </div>
+                <span class="badge">Competitive</span>
+              </div>
+              <div id="positioningGrid" class="positioning-grid"></div>
+            </article>
+
+            <article class="insight-panel">
+              <div class="chart-head">
+                <div>
+                  <h2>Opportunity heat map</h2>
+                  <p id="heatMapMeta">BCG-style quadrants from selected data</p>
+                </div>
+                <span class="badge">Heat map</span>
+              </div>
+              <div id="heatMapGrid" class="heat-map-grid"></div>
+            </article>
+
+            <article class="insight-panel framework-panel">
+              <div class="chart-head">
+                <div>
+                  <h2>Consulting frameworks</h2>
+                  <p id="frameworkMeta">SWOT, BCG, Ansoff, 4Ps, STP, Porter, GTM and opportunity logic</p>
+                </div>
+                <span class="badge">Strategy</span>
+              </div>
+              <div id="frameworkGrid" class="framework-grid"></div>
+            </article>
+
+            <article class="insight-panel framework-panel">
+              <div class="chart-head">
+                <div>
+                  <h2>Vertical action plans</h2>
+                  <p id="verticalPlanMeta">Team-specific operating plan from selected filters</p>
+                </div>
+                <span class="badge">MNC-ready</span>
+              </div>
+              <div id="verticalPlanGrid" class="framework-grid"></div>
+            </article>
+
+            <article class="insight-panel brand-plan-panel">
+              <div class="chart-head">
+                <div>
+                  <h2>Brand Plan Generator</h2>
+                  <p id="brandPlanMeta">Click Generate Brand Plan to build the full plan</p>
+                </div>
+                <span class="badge">Brand plan</span>
+              </div>
+              <div id="brandPlanOutput" class="brand-plan-output"></div>
+            </article>
+          </section>
         </section>
       </main>
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=20260426-upload-only"></script>
+    <script src="./app.js?v=20260426-pharma-analytics"></script>
   </body>
 </html>
