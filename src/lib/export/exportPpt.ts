@@ -1,8 +1,8 @@
-import pptxgen from "pptxgenjs";
 import type { Insight, KpiSet } from "../utils/types";
 import { formatCurrency, formatNumber, formatPercent, safeFileName } from "../utils/formatters";
 
 export async function exportPpt(kpis: KpiSet, insights: Insight[], fileName = "marketlens-board-pack"): Promise<void> {
+  const { default: pptxgen } = await import("pptxgenjs");
   const pptx = new pptxgen();
   pptx.layout = "LAYOUT_WIDE";
   pptx.author = "MarketLens IQ";

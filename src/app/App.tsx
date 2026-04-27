@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useDeferredValue, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { FILTER_DEFAULTS, STATIC_FILTER_OPTIONS } from "../lib/utils/constants";
 import type { AnalyticsContext, DashboardTab, DataHealth, FieldMapping, FilterState, MappingConfidence, ParsedDataset, ParseProgress, PharmaField, RawRow, UploadMeta } from "../lib/utils/types";
 import { parseFile, getColumns } from "../lib/ingestion/parseFile";
@@ -7,7 +7,7 @@ import { validateMapping } from "../lib/mapping/validateMapping";
 import { applyFilters, availableTimePeriods, fieldText } from "../lib/analytics/aggregateData";
 import { calculateKpis } from "../lib/analytics/calculateKpis";
 import { generateInsights } from "../lib/strategy/insightEngine";
-import { cellText, parsePeriod, unique } from "../lib/utils/formatters";
+import { cellText, parsePeriod } from "../lib/utils/formatters";
 import { AppShell } from "../components/layout/AppShell";
 import type { FilterOptions } from "../components/layout/TopFilterBar";
 import { UploadDropzone } from "../components/upload/UploadDropzone";
@@ -85,6 +85,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [progress, setProgress] = useState<ParseProgress>(idleProgress);
+  const deferredDraftFilters = useDeferredValue(draftFilters);
 
   const activeRows = useMemo(() => (dataset ? dataset.tables[activeSheet || dataset.activeSheet] ?? [] : []), [dataset, activeSheet]);
   const columns = useMemo(() => getColumns(activeRows), [activeRows]);
@@ -108,33 +109,48 @@ export default function App() {
   }, [activeRows.length, health.status]);
 
   const filterOptions = useMemo<FilterOptions>(() => {
-    type FilterArrayKey = Exclude<keyof FilterState, "metric">;
-    const rowsForOption = (field: FilterArrayKey) => {
-      const resetFilters = { ...draftFilters, [field]: [] };
-      return applyFilters(activeRows, mapping, resetFilters);
+    const maxOptions = 500;
+    const optionRows = applyFilters(activeRows, mapping, deferredDraftFilters);
+    const add = (set: Set<string>, value: string, limit = maxOptions) => {
+      if (value && set.size < limit) set.add(value);
     };
-    const fromField = (field: PharmaField, optionRows = activeRows) => unique(optionRows.map((row) => fieldText(row, mapping, field)).filter(Boolean)).slice(0, 500);
-    const periods = mapping.month ? unique(activeRows.map((row) => parsePeriod(row[mapping.month as string])).filter(Boolean)).slice(0, 250) : [];
-    const widePeriods = availableTimePeriods(activeRows).slice(0, 250);
+    const marketType = new Set([...STATIC_FILTER_OPTIONS.marketType, ...deferredDraftFilters.marketType]);
+    const companyType = new Set([...STATIC_FILTER_OPTIONS.companyType, ...deferredDraftFilters.companyType]);
+    const productType = new Set([...STATIC_FILTER_OPTIONS.productType, ...deferredDraftFilters.productType]);
+    const brand = new Set(deferredDraftFilters.brand);
+    const therapy = new Set(deferredDraftFilters.therapy);
+    const molecule = new Set(deferredDraftFilters.molecule);
+    const company = new Set(deferredDraftFilters.company);
+    const timePeriod = new Set(deferredDraftFilters.timePeriod);
+
+    optionRows.forEach((row) => {
+      add(marketType, fieldText(row, mapping, "marketType"));
+      add(companyType, fieldText(row, mapping, "companyType"));
+      add(productType, fieldText(row, mapping, "productType"));
+      add(brand, fieldText(row, mapping, "brand"));
+      add(therapy, fieldText(row, mapping, "therapy"));
+      add(molecule, fieldText(row, mapping, "molecule"));
+      add(company, fieldText(row, mapping, "company"));
+      if (mapping.month) add(timePeriod, parsePeriod(row[mapping.month as string]), 250);
+    });
+    availableTimePeriods(activeRows).slice(0, 250).forEach((period) => add(timePeriod, period, 250));
+
     return {
-      marketType: unique([...draftFilters.marketType, ...STATIC_FILTER_OPTIONS.marketType, ...fromField("marketType", rowsForOption("marketType"))]),
-      companyType: unique([...draftFilters.companyType, ...STATIC_FILTER_OPTIONS.companyType, ...fromField("companyType", rowsForOption("companyType"))]),
-      productType: unique([...draftFilters.productType, ...STATIC_FILTER_OPTIONS.productType, ...fromField("productType", rowsForOption("productType"))]),
-      brand: unique([...draftFilters.brand, ...fromField("brand", rowsForOption("brand"))]),
-      therapy: unique([...draftFilters.therapy, ...fromField("therapy", rowsForOption("therapy"))]),
-      molecule: unique([...draftFilters.molecule, ...fromField("molecule", rowsForOption("molecule"))]),
-      company: unique([...draftFilters.company, ...fromField("company", rowsForOption("company"))]),
-      timePeriod: unique([...draftFilters.timePeriod, ...widePeriods, ...periods])
+      marketType: Array.from(marketType),
+      companyType: Array.from(companyType),
+      productType: Array.from(productType),
+      brand: Array.from(brand),
+      therapy: Array.from(therapy),
+      molecule: Array.from(molecule),
+      company: Array.from(company),
+      timePeriod: Array.from(timePeriod)
     };
-  }, [activeRows, mapping, draftFilters]);
+  }, [activeRows, mapping, deferredDraftFilters]);
 
   const context: AnalyticsContext = useMemo(
     () => ({ rows: filteredRows, mapping, health, filters: appliedFilters }),
     [filteredRows, mapping, health, appliedFilters]
   );
-  const kpis = useMemo(() => calculateKpis(filteredRows, mapping, appliedFilters), [filteredRows, mapping, appliedFilters]);
-  const insights = useMemo(() => generateInsights(context), [context]);
-
   async function ingestFile(file: File) {
     setProgress({ phase: "reading", percent: 5, rowsProcessed: 0, message: "Preparing upload" });
     const parsed = await parseFile(file, setProgress);
@@ -214,7 +230,6 @@ export default function App() {
 
   function updateFilters(nextFilters: FilterState) {
     setDraftFilters(nextFilters);
-    setAppliedFilters(nextFilters);
   }
 
   function openTab(tab: DashboardTab) {
@@ -280,7 +295,7 @@ export default function App() {
       case "brandPlan":
         return <BrandPlan context={context} onOpenMapping={() => setMappingOpen(true)} />;
       case "exports":
-        return <ExportCenter context={context} kpis={kpis} insights={insights} />;
+        return <ExportCenter context={context} kpis={calculateKpis(context.rows, context.mapping, context.filters)} insights={generateInsights(context)} />;
       case "overview":
       default:
         return <OverviewDashboard context={context} />;

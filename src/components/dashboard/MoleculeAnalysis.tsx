@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { AnalyticsContext } from "../../lib/utils/types";
 import { aggregateByBrand, aggregateByMolecule } from "../../lib/analytics/aggregateData";
 import { BubbleChart } from "../charts/BubbleChart";
@@ -5,8 +6,8 @@ import { RankingTable } from "../charts/RankingTable";
 import { SharePieChart } from "../charts/SharePieChart";
 
 export function MoleculeAnalysis({ context }: { context: AnalyticsContext }) {
-  const molecules = aggregateByMolecule(context.rows, context.mapping, context.filters.metric, context.filters);
-  const brands = aggregateByBrand(context.rows, context.mapping, context.filters.metric, context.filters);
+  const molecules = useMemo(() => aggregateByMolecule(context.rows, context.mapping, context.filters.metric, context.filters), [context]);
+  const brands = useMemo(() => aggregateByBrand(context.rows, context.mapping, context.filters.metric, context.filters), [context]);
   return (
     <div className="grid grid-cols-12 gap-4">
       <div className="col-span-12 lg:col-span-4">

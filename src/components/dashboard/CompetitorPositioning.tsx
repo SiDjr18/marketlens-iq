@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { AnalyticsContext } from "../../lib/utils/types";
 import { competitorAnalytics } from "../../lib/analytics/competitorAnalytics";
 import { formatCurrency, formatPercent } from "../../lib/utils/formatters";
@@ -7,7 +8,10 @@ import { RankingTable } from "../charts/RankingTable";
 import { Card } from "../ui/Card";
 
 export function CompetitorPositioning({ context }: { context: AnalyticsContext }) {
-  const pack = competitorAnalytics(context.rows, context.mapping, context.filters, context.filters.company.length ? "company" : "brand");
+  const pack = useMemo(
+    () => competitorAnalytics(context.rows, context.mapping, context.filters, context.filters.company.length ? "company" : "brand"),
+    [context]
+  );
   return (
     <div className="grid grid-cols-12 gap-4">
       <Card className="col-span-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">

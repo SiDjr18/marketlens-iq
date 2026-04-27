@@ -1,7 +1,7 @@
-import Papa from "papaparse";
 import type { RawRow } from "../utils/types";
 
 export async function parseCsv(file: File, delimiter?: string): Promise<{ rows: RawRow[]; errors: string[] }> {
+  const Papa = (await import("papaparse")).default;
   return new Promise((resolve) => {
     Papa.parse<RawRow>(file, {
       header: true,

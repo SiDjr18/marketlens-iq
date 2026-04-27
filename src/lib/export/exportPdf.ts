@@ -1,8 +1,7 @@
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
 import { safeFileName } from "../utils/formatters";
 
 export async function exportPdf(elementId = "dashboard-scroll", fileName = "marketlens-report"): Promise<void> {
+  const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
   const element = document.getElementById(elementId);
   if (!element) throw new Error("Dashboard area was not found for PDF export.");
   const canvas = await html2canvas(element, { backgroundColor: "#F7F9FC", scale: 2, useCORS: true });

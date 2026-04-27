@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { AnalyticsContext } from "../../lib/utils/types";
 import { supportedFrameworks, generateInsights } from "../../lib/strategy/insightEngine";
 import { isStrategyReady } from "../../lib/mapping/validateMapping";
@@ -11,8 +12,8 @@ export function StrategyLab({ context, onOpenMapping }: { context: AnalyticsCont
     return <EmptyState title="Strategy Lab is locked" description="Complete field mapping and pass the data health gate before generating strategy." action={<Button variant="primary" onClick={onOpenMapping}>Open Field Mapping</Button>} />;
   }
 
-  const insights = generateInsights(context);
-  const frameworks = supportedFrameworks(context);
+  const insights = useMemo(() => generateInsights(context), [context]);
+  const frameworks = useMemo(() => supportedFrameworks(context), [context]);
 
   return (
     <div className="grid grid-cols-12 gap-4">

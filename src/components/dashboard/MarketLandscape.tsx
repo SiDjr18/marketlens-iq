@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { AnalyticsContext } from "../../lib/utils/types";
 import { aggregateByBrand, aggregateByCompany, aggregateByMolecule, aggregateByTherapy, trendByPeriod } from "../../lib/analytics/aggregateData";
 import { CompanyShareChart } from "../charts/CompanyShareChart";
@@ -6,15 +7,16 @@ import { TherapySplitChart } from "../charts/TherapySplitChart";
 import { TrendChart } from "../charts/TrendChart";
 
 export function MarketLandscape({ context }: { context: AnalyticsContext }) {
-  const brands = aggregateByBrand(context.rows, context.mapping, context.filters.metric, context.filters);
-  const companies = aggregateByCompany(context.rows, context.mapping, context.filters.metric, context.filters);
-  const therapies = aggregateByTherapy(context.rows, context.mapping, context.filters.metric, context.filters);
-  const molecules = aggregateByMolecule(context.rows, context.mapping, context.filters.metric, context.filters);
+  const brands = useMemo(() => aggregateByBrand(context.rows, context.mapping, context.filters.metric, context.filters), [context]);
+  const companies = useMemo(() => aggregateByCompany(context.rows, context.mapping, context.filters.metric, context.filters), [context]);
+  const therapies = useMemo(() => aggregateByTherapy(context.rows, context.mapping, context.filters.metric, context.filters), [context]);
+  const molecules = useMemo(() => aggregateByMolecule(context.rows, context.mapping, context.filters.metric, context.filters), [context]);
+  const trend = useMemo(() => trendByPeriod(context.rows, context.mapping, context.filters.metric), [context]);
 
   return (
     <div className="grid grid-cols-12 gap-4">
       <div className="col-span-12 lg:col-span-8">
-        <TrendChart title="Market sales trend" data={trendByPeriod(context.rows, context.mapping, context.filters.metric)} />
+        <TrendChart title="Market sales trend" data={trend} />
       </div>
       <div className="col-span-12 lg:col-span-4">
         <TherapySplitChart title="Therapy contribution" data={therapies} />

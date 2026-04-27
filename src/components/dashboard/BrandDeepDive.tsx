@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { AnalyticsContext } from "../../lib/utils/types";
 import { aggregateByBrand, trendByPeriod } from "../../lib/analytics/aggregateData";
 import { competitorAnalytics } from "../../lib/analytics/competitorAnalytics";
@@ -7,10 +8,11 @@ import { TrendChart } from "../charts/TrendChart";
 import { Card } from "../ui/Card";
 
 export function BrandDeepDive({ context }: { context: AnalyticsContext }) {
-  const brands = aggregateByBrand(context.rows, context.mapping, context.filters.metric, context.filters);
+  const brands = useMemo(() => aggregateByBrand(context.rows, context.mapping, context.filters.metric, context.filters), [context]);
   const selectedName = context.filters.brand[0] ?? brands[0]?.name;
   const selected = brands.find((brand) => brand.name === selectedName) ?? brands[0];
-  const competitors = competitorAnalytics(context.rows, context.mapping, context.filters, "brand");
+  const competitors = useMemo(() => competitorAnalytics(context.rows, context.mapping, context.filters, "brand"), [context]);
+  const trend = useMemo(() => trendByPeriod(context.rows, context.mapping, context.filters.metric), [context]);
 
   return (
     <div className="grid grid-cols-12 gap-4">
@@ -29,7 +31,7 @@ export function BrandDeepDive({ context }: { context: AnalyticsContext }) {
         </div>
       </Card>
       <div className="col-span-12 lg:col-span-8">
-        <TrendChart title="Brand monthly trend" data={trendByPeriod(context.rows, context.mapping, context.filters.metric)} />
+        <TrendChart title="Brand monthly trend" data={trend} />
       </div>
       <Card className="col-span-12 lg:col-span-4">
         <h3 className="text-base font-bold text-navy">Performance stack</h3>
