@@ -41,7 +41,7 @@ export function AppShell({
   children
 }: AppShellProps) {
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#F7F9FC] text-slate-900">
+    <div className="flex h-screen flex-col overflow-hidden bg-canvas text-slate-900">
       <Header status={status} onUploadClick={onUploadClick} onSettingsClick={onSettingsClick} />
       <NavigationTabs activeTab={activeTab} onChange={onTabChange} disabledTabs={disabledTabs} />
       <TopFilterBar

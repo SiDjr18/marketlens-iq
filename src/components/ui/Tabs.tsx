@@ -8,14 +8,14 @@ type TabsProps = {
 
 export function Tabs({ tabs, active, onChange }: TabsProps) {
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-1">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           type="button"
           onClick={() => onChange(tab.id)}
-          className={`h-9 rounded-full px-4 text-sm font-semibold transition ${
-            active === tab.id ? "bg-teal text-white shadow-sm" : "bg-white text-slate-700 hover:bg-slate-50"
+          className={`h-9 rounded-md px-4 text-sm font-semibold transition ${
+            active === tab.id ? "bg-navy text-white shadow-control" : "text-slate-600 hover:bg-slate-50 hover:text-navy"
           }`}
         >
           {tab.label}

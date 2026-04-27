@@ -1,4 +1,4 @@
-import { Save, SlidersHorizontal, XCircle } from "lucide-react";
+import { Filter, Save, SlidersHorizontal, XCircle } from "lucide-react";
 import { useState } from "react";
 import { FILTER_DEFAULTS, METRIC_OPTIONS } from "../../lib/utils/constants";
 import type { FilterState, PharmaField } from "../../lib/utils/types";
@@ -41,8 +41,19 @@ export function TopFilterBar({ filters, options, disabled, onChange, onApply, on
   };
 
   return (
-    <section className="z-30 shrink-0 border-b border-border bg-white px-6 py-3 shadow-sm">
-      <div className="mx-auto flex max-w-[1280px] flex-col gap-3">
+    <section className="z-30 shrink-0 border-b border-border bg-white/95 px-6 py-3 shadow-sm backdrop-blur">
+      <div className="mx-auto flex max-w-[1280px] flex-col gap-3 rounded-lg border border-border bg-gradient-to-b from-white to-slate-50/70 p-3 shadow-control">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-sm font-black text-navy">
+            <span className="flex h-8 w-8 items-center justify-center rounded-md bg-teal/10 text-teal">
+              <Filter className="h-4 w-4" />
+            </span>
+            Strategic filters
+          </div>
+          <div className="text-xs font-semibold text-slate-500">
+            {Object.entries(filters).filter(([key, value]) => key !== "metric" && Array.isArray(value) && value.length > 0).length || "No"} active groups
+          </div>
+        </div>
         <div className="flex flex-wrap gap-3">
           <MultiSelect id="marketType" label="Market Type" options={options.marketType} value={filters.marketType} onChange={(value) => setFilter("marketType", value)} disabled={disabled} {...dropdownState} />
           <MultiSelect id="companyType" label="Company Type" options={options.companyType} value={filters.companyType} onChange={(value) => setFilter("companyType", value)} disabled={disabled} {...dropdownState} />
