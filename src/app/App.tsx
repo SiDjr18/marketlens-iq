@@ -108,20 +108,25 @@ export default function App() {
   }, [activeRows.length, health.status]);
 
   const filterOptions = useMemo<FilterOptions>(() => {
-    const fromField = (field: PharmaField) => unique(activeRows.map((row) => fieldText(row, mapping, field)).filter(Boolean)).slice(0, 500);
+    type FilterArrayKey = Exclude<keyof FilterState, "metric">;
+    const rowsForOption = (field: FilterArrayKey) => {
+      const resetFilters = { ...draftFilters, [field]: [] };
+      return applyFilters(activeRows, mapping, resetFilters);
+    };
+    const fromField = (field: PharmaField, optionRows = activeRows) => unique(optionRows.map((row) => fieldText(row, mapping, field)).filter(Boolean)).slice(0, 500);
     const periods = mapping.month ? unique(activeRows.map((row) => parsePeriod(row[mapping.month as string])).filter(Boolean)).slice(0, 250) : [];
     const widePeriods = availableTimePeriods(activeRows).slice(0, 250);
     return {
-      marketType: unique([...STATIC_FILTER_OPTIONS.marketType, ...fromField("marketType")]),
-      companyType: unique([...STATIC_FILTER_OPTIONS.companyType, ...fromField("companyType")]),
-      productType: unique([...STATIC_FILTER_OPTIONS.productType, ...fromField("productType")]),
-      brand: fromField("brand"),
-      therapy: fromField("therapy"),
-      molecule: fromField("molecule"),
-      company: fromField("company"),
-      timePeriod: unique([...widePeriods, ...periods])
+      marketType: unique([...draftFilters.marketType, ...STATIC_FILTER_OPTIONS.marketType, ...fromField("marketType", rowsForOption("marketType"))]),
+      companyType: unique([...draftFilters.companyType, ...STATIC_FILTER_OPTIONS.companyType, ...fromField("companyType", rowsForOption("companyType"))]),
+      productType: unique([...draftFilters.productType, ...STATIC_FILTER_OPTIONS.productType, ...fromField("productType", rowsForOption("productType"))]),
+      brand: unique([...draftFilters.brand, ...fromField("brand", rowsForOption("brand"))]),
+      therapy: unique([...draftFilters.therapy, ...fromField("therapy", rowsForOption("therapy"))]),
+      molecule: unique([...draftFilters.molecule, ...fromField("molecule", rowsForOption("molecule"))]),
+      company: unique([...draftFilters.company, ...fromField("company", rowsForOption("company"))]),
+      timePeriod: unique([...draftFilters.timePeriod, ...widePeriods, ...periods])
     };
-  }, [activeRows, mapping]);
+  }, [activeRows, mapping, draftFilters]);
 
   const context: AnalyticsContext = useMemo(
     () => ({ rows: filteredRows, mapping, health, filters: appliedFilters }),

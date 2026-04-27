@@ -1,13 +1,16 @@
 import { mappingAliases } from "./mappingRules";
 import { normalizeKey, toNumber } from "../utils/formatters";
 import type { FieldMapping, MappingConfidence, PharmaField, RawRow } from "../utils/types";
+import { IMS_FIELD_MAP } from "../analytics/imsSchema";
 
 type AutoMapResult = {
   mapping: FieldMapping;
   confidence: MappingConfidence;
 };
 
-const canonicalColumns: Partial<Record<PharmaField, string>> = {
+const imsCanonicalColumns: Partial<Record<PharmaField, string>> = IMS_FIELD_MAP;
+
+const marketLensCanonicalColumns: Partial<Record<PharmaField, string>> = {
   brand: "MarketLens Brand",
   company: "MarketLens Company",
   therapy: "MarketLens Therapy",
@@ -69,12 +72,23 @@ export function autoMapColumns(columns: string[], rows: RawRow[] = []): AutoMapR
   const mapping: FieldMapping = {};
   const confidence: MappingConfidence = {};
 
-  (Object.keys(canonicalColumns) as PharmaField[]).forEach((field) => {
-    const canonical = canonicalColumns[field];
+  (Object.keys(imsCanonicalColumns) as PharmaField[]).forEach((field) => {
+    const canonical = imsCanonicalColumns[field];
     const column = columns.find((candidate) => normalizeKey(candidate) === normalizeKey(canonical));
     if (column) {
       mapping[field] = column;
       confidence[field] = 100;
+      used.add(column);
+    }
+  });
+
+  (Object.keys(marketLensCanonicalColumns) as PharmaField[]).forEach((field) => {
+    if (mapping[field]) return;
+    const canonical = marketLensCanonicalColumns[field];
+    const column = columns.find((candidate) => normalizeKey(candidate) === normalizeKey(canonical));
+    if (column) {
+      mapping[field] = column;
+      confidence[field] = 96;
       used.add(column);
     }
   });

@@ -80,10 +80,25 @@ export type AggregateRow = {
   volume: number;
   mat: number;
   previousValue: number;
+  growthAbs?: number;
   growth: number;
+  unitGrowth?: number | null;
+  cpGrowth?: number | null;
+  growthContribution?: number;
+  priceProxyGrowth?: number | null;
+  momentum?: number | null;
+  latest3MonthAvg?: number | null;
+  previous3MonthAvg?: number | null;
+  seasonality?: number | null;
   share: number;
   rank: number;
   priceProxy: number;
+  classification?: string;
+  score?: number;
+  competitiveIntensity?: number;
+  companyCount?: number;
+  brandCount?: number;
+  dataLimitations?: string[];
   rowCount: number;
 };
 

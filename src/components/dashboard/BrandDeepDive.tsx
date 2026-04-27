@@ -24,7 +24,7 @@ export function BrandDeepDive({ context }: { context: AnalyticsContext }) {
             <Summary label="Sales" value={formatCurrency(selected?.value ?? 0)} />
             <Summary label="Rank" value={selected?.rank ? `#${selected.rank}` : "n/a"} />
             <Summary label="Share" value={formatPercent(selected?.share ?? 0)} />
-            <Summary label="Price proxy" value={formatCurrency(selected?.priceProxy ?? 0)} />
+            <Summary label="Score" value={selected?.score === undefined ? "n/a" : `${formatNumber(selected.score, 0)}/100`} />
           </div>
         </div>
       </Card>
@@ -37,6 +37,11 @@ export function BrandDeepDive({ context }: { context: AnalyticsContext }) {
           <Line label="Units" value={formatNumber(selected?.units ?? 0)} />
           <Line label="Volume" value={formatNumber(selected?.volume ?? 0)} />
           <Line label="Growth" value={formatPercent(selected?.growth ?? 0)} />
+          <Line label="Unit growth" value={formatPercent(selected?.unitGrowth ?? 0)} />
+          <Line label="CP growth" value={formatPercent(selected?.cpGrowth ?? 0)} />
+          <Line label="Monthly momentum" value={formatPercent(selected?.momentum ?? 0)} />
+          <Line label="Classification" value={selected?.classification ?? "n/a"} />
+          <Line label="Price proxy" value={formatCurrency(selected?.priceProxy ?? 0)} />
           <Line label="Gap to leader" value={formatCurrency(competitors.gapToLeader)} />
         </div>
       </Card>

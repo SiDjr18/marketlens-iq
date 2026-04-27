@@ -1,5 +1,6 @@
 import { cellText, parsePeriod, toNumber } from "../utils/formatters";
 import type { AggregateRow, FieldMapping, FilterState, PharmaField, RawRow } from "../utils/types";
+import { calculateDimensionMetrics } from "./pharmaMetrics";
 
 type WideMetricKind = "valueMonth" | "valueMat" | "unitMonth" | "unitMat" | "volumeMonth" | "volumeMat";
 
@@ -96,6 +97,14 @@ function wideColumns(columns: string[]): WideColumn[] {
     .sort((a, b) => periodSortValue(a.period) - periodSortValue(b.period));
 }
 
+function isNativeMonthlySeries(column: WideColumn): boolean {
+  const key = normalizedHeader(column.column);
+  if (column.kind === "valueMonth") return new RegExp(`^${MONTH_PATTERN}$`).test(key);
+  if (column.kind === "unitMonth") return new RegExp(`^UNIT\\s+${MONTH_PATTERN}$`).test(key);
+  if (column.kind === "volumeMonth") return new RegExp(`^(QTY|VOLUME)\\s+${MONTH_PATTERN}$`).test(key);
+  return false;
+}
+
 function preferredKinds(metric: PharmaField, selected = false): WideMetricKind[] {
   if (metric === "mat") return ["valueMat"];
   if (metric === "units") return ["unitMonth", "unitMat"];
@@ -115,6 +124,8 @@ function comparisonKinds(metric: PharmaField, currentColumn?: string): WideMetri
 function firstColumnForPeriod(columns: string[], metric: PharmaField, period: string): string | undefined {
   const matches = wideColumns(columns).filter((item) => item.period === period);
   for (const kind of preferredKinds(metric, true)) {
+    const nativeMatch = matches.find((item) => item.kind === kind && isNativeMonthlySeries(item));
+    if (nativeMatch) return nativeMatch.column;
     const match = matches.find((item) => item.kind === kind);
     if (match) return match.column;
   }
@@ -130,6 +141,8 @@ export function widePeriodColumns(rows: RawRow[], metric: PharmaField = "valueSa
   const columns = wideColumns(columnsOf(rows));
   for (const kind of preferredKinds(metric, false)) {
     const matches = columns.filter((column) => column.kind === kind);
+    const nativeMonthly = matches.filter(isNativeMonthlySeries);
+    if (nativeMonthly.length >= 2) return nativeMonthly.map((item) => item.column);
     if (matches.length) return matches.map((item) => item.column);
   }
   return [];
@@ -193,6 +206,9 @@ export function aggregateByDimension(
   metric: PharmaField = "valueSales",
   filters?: FilterState
 ): AggregateRow[] {
+  const imsRows = calculateDimensionMetrics(rows, mapping, dimension, metric, filters);
+  if (imsRows) return imsRows;
+
   const dimensionColumn = mapping[dimension];
   if (!dimensionColumn) return [];
 
