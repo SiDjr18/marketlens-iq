@@ -12,16 +12,28 @@ function columnsOf(rows: RawRow[]): string[] {
 }
 
 async function parseCsvInWorker(file: File, delimiter: string | undefined, onProgress?: ProgressCallback) {
-  if (!window.Worker) return parseCsv(file, delimiter);
+  if (!window.Worker) return parseCsv(file, delimiter, onProgress);
   return new Promise<{ rows: RawRow[]; errors: string[] }>((resolve) => {
     const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
     worker.onmessage = (event: MessageEvent) => {
-      const data = event.data as { type: string; rowsProcessed?: number; rows?: RawRow[]; errors?: string[]; error?: string; message?: string };
+      const data = event.data as {
+        type: string;
+        rowsProcessed?: number;
+        rows?: RawRow[];
+        errors?: string[];
+        error?: string;
+        message?: string;
+        percent?: number;
+        bytesProcessed?: number;
+        totalBytes?: number;
+      };
       if (data.type === "progress") {
         onProgress?.({
           phase: "parsing",
-          percent: 50,
+          percent: data.percent ?? 50,
           rowsProcessed: data.rowsProcessed ?? 0,
+          bytesProcessed: data.bytesProcessed,
+          totalBytes: data.totalBytes,
           message: data.message ?? `${(data.rowsProcessed ?? 0).toLocaleString("en-IN")} rows processed`
         });
       }
@@ -36,7 +48,7 @@ async function parseCsvInWorker(file: File, delimiter: string | undefined, onPro
     };
     worker.onerror = () => {
       worker.terminate();
-      resolve(parseCsv(file, delimiter));
+      resolve(parseCsv(file, delimiter, onProgress));
     };
     worker.postMessage({ file, delimiter, kind: "csv" });
   });
@@ -55,12 +67,17 @@ async function parseXlsxInWorker(file: File, onProgress?: ProgressCallback) {
         errors?: string[];
         error?: string;
         message?: string;
+        percent?: number;
+        bytesProcessed?: number;
+        totalBytes?: number;
       };
       if (data.type === "progress") {
         onProgress?.({
           phase: "parsing",
-          percent: 45,
+          percent: data.percent ?? 45,
           rowsProcessed: data.rowsProcessed ?? 0,
+          bytesProcessed: data.bytesProcessed,
+          totalBytes: data.totalBytes,
           message: data.message ?? "Streaming Excel workbook"
         });
       }
@@ -91,7 +108,7 @@ export async function parseFile(file: File, onProgress?: ProgressCallback): Prom
 
   if (extension === "csv" || extension === "tsv") {
     const delimiter = extension === "tsv" ? "\t" : undefined;
-    const parsed = file.size > 8 * 1024 * 1024 ? await parseCsvInWorker(file, delimiter, onProgress) : await parseCsv(file, delimiter);
+    const parsed = file.size > 8 * 1024 * 1024 ? await parseCsvInWorker(file, delimiter, onProgress) : await parseCsv(file, delimiter, onProgress);
     tables = { Data: parsed.rows };
     sheetNames = ["Data"];
     errors = parsed.errors;

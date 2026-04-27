@@ -16,6 +16,11 @@ type WorkerRequest = {
   kind: "csv" | "xlsx";
 };
 
+type SheetProgress = {
+  rows: number;
+  bytesRead: number;
+};
+
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   const { file, delimiter, kind } = event.data;
   if (kind === "xlsx") {
@@ -39,7 +44,14 @@ function parseDelimited(file: File, delimiter?: string) {
       result.data.forEach((row) => {
         if (Object.values(row).some((value) => String(value ?? "").trim())) rows.push(row);
       });
-      self.postMessage({ type: "progress", rowsProcessed: rows.length, message: `${rows.length.toLocaleString("en-IN")} rows processed` });
+      const cursor = Math.min(file.size, Number(result.meta.cursor) || 0);
+      postProgress({
+        percent: boundedPercent(5 + (cursor / Math.max(file.size, 1)) * 90),
+        rowsProcessed: rows.length,
+        bytesProcessed: cursor,
+        totalBytes: file.size,
+        message: `${rows.length.toLocaleString("en-IN")} rows parsed`
+      });
     },
     complete: (result) => {
       result.errors.forEach((error) => errors.push(`${error.message} at row ${error.row ?? "unknown"}`));
@@ -56,8 +68,15 @@ async function parseXlsx(file: File) {
     if (!("DecompressionStream" in self)) {
       throw new Error("This browser does not support streaming XLSX parsing. Export the workbook as CSV or use Chrome/Edge.");
     }
-    self.postMessage({ type: "progress", rowsProcessed: 0, message: "Reading Excel workbook directory" });
+    postProgress({ percent: 5, rowsProcessed: 0, bytesProcessed: 0, totalBytes: file.size, message: "Reading Excel workbook directory" });
     const entries = await readZipDirectory(file);
+    postProgress({
+      percent: 12,
+      rowsProcessed: 0,
+      bytesProcessed: Math.min(file.size, 1024 * 1024),
+      totalBytes: file.size,
+      message: "Workbook directory loaded"
+    });
     const workbookEntry = entries.get("xl/workbook.xml");
     const relsEntry = entries.get("xl/_rels/workbook.xml.rels");
     if (!workbookEntry || !relsEntry) throw new Error("Workbook metadata is missing.");
@@ -73,16 +92,52 @@ async function parseXlsx(file: File) {
       .filter((sheet) => entries.has(sheet.path));
     if (!sheets.length) throw new Error("No readable worksheets found.");
 
-    self.postMessage({ type: "progress", rowsProcessed: 0, message: "Loading shared strings" });
+    postProgress({ percent: 18, rowsProcessed: 0, bytesProcessed: 0, totalBytes: file.size, message: "Loading shared strings" });
     const sharedEntry = entries.get("xl/sharedStrings.xml");
-    const sharedStrings = sharedEntry ? parseSharedStrings(await readZipEntryText(file, sharedEntry)) : [];
+    const sharedStrings = sharedEntry
+      ? parseSharedStrings(
+          await readZipEntryText(file, sharedEntry, (bytesRead) => {
+            postProgress({
+              percent: boundedPercent(18 + (bytesRead / Math.max(sharedEntry.uncompressedSize, 1)) * 12),
+              rowsProcessed: 0,
+              bytesProcessed: bytesRead,
+              totalBytes: sharedEntry.uncompressedSize,
+              message: "Loading shared strings"
+            });
+          })
+        )
+      : [];
     const tables: Record<string, RawRow[]> = {};
     let totalRows = 0;
+    const readableSheets = sheets.slice(0, 5).map((sheet) => ({ ...sheet, entry: entries.get(sheet.path) as ZipEntry }));
+    const totalSheetBytes = readableSheets.reduce((sum, sheet) => sum + Math.max(sheet.entry.uncompressedSize, 1), 0);
+    let completedSheetBytes = 0;
 
-    for (const sheet of sheets.slice(0, 5)) {
-      self.postMessage({ type: "progress", rowsProcessed: totalRows, message: `Streaming ${sheet.name}` });
-      const tableRows = await readSheetRowsStreaming(file, entries.get(sheet.path) as ZipEntry, sharedStrings, (count) => {
-        if (count % 1000 === 0) self.postMessage({ type: "progress", rowsProcessed: totalRows + count, message: `Streaming ${sheet.name}` });
+    for (const sheet of readableSheets) {
+      postProgress({
+        percent: boundedPercent(30 + (completedSheetBytes / Math.max(totalSheetBytes, 1)) * 60),
+        rowsProcessed: totalRows,
+        bytesProcessed: completedSheetBytes,
+        totalBytes: totalSheetBytes,
+        message: `Streaming ${sheet.name}`
+      });
+      const tableRows = await readSheetRowsStreaming(file, sheet.entry, sharedStrings, (progress) => {
+        const bytesRead = completedSheetBytes + progress.bytesRead;
+        postProgress({
+          percent: boundedPercent(30 + (bytesRead / Math.max(totalSheetBytes, 1)) * 60),
+          rowsProcessed: totalRows + progress.rows,
+          bytesProcessed: bytesRead,
+          totalBytes: totalSheetBytes,
+          message: `Streaming ${sheet.name}`
+        });
+      });
+      completedSheetBytes += Math.max(sheet.entry.uncompressedSize, 1);
+      postProgress({
+        percent: boundedPercent(30 + (completedSheetBytes / Math.max(totalSheetBytes, 1)) * 60),
+        rowsProcessed: totalRows + tableRows.length,
+        bytesProcessed: completedSheetBytes,
+        totalBytes: totalSheetBytes,
+        message: `Converting ${sheet.name} rows`
       });
       const objects = withImsReferenceFields(tableToObjects(tableRows));
       tables[sheet.name] = objects;
@@ -93,6 +148,14 @@ async function parseXlsx(file: File) {
   } catch (error) {
     self.postMessage({ type: "error", error: error instanceof Error ? error.message : "Unable to stream XLSX workbook." });
   }
+}
+
+function postProgress(progress: { percent: number; rowsProcessed: number; message: string; bytesProcessed?: number; totalBytes?: number }) {
+  self.postMessage({ type: "progress", ...progress });
+}
+
+function boundedPercent(value: number) {
+  return Math.max(1, Math.min(99, Math.round(value)));
 }
 
 async function readZipDirectory(file: File): Promise<Map<string, ZipEntry>> {
@@ -128,28 +191,35 @@ async function readZipDirectory(file: File): Promise<Map<string, ZipEntry>> {
   return entries;
 }
 
-async function readZipEntryText(file: File, entry: ZipEntry): Promise<string> {
+async function readZipEntryText(file: File, entry: ZipEntry, onBytes?: (bytesRead: number) => void): Promise<string> {
   const stream = await zipEntryStream(file, entry);
   const reader = decodeStream(stream).getReader();
   let text = "";
+  let bytesRead = 0;
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
     text += value;
+    bytesRead += value.length;
+    onBytes?.(Math.min(bytesRead, entry.uncompressedSize || bytesRead));
   }
   return text;
 }
 
-async function readSheetRowsStreaming(file: File, entry: ZipEntry, sharedStrings: string[], onRows: (count: number) => void): Promise<unknown[][]> {
+async function readSheetRowsStreaming(file: File, entry: ZipEntry, sharedStrings: string[], onProgress: (progress: SheetProgress) => void): Promise<unknown[][]> {
   const rows: unknown[][] = [];
   const stream = await zipEntryStream(file, entry);
   const reader = decodeStream(stream).getReader();
   let buffer = "";
+  let bytesRead = 0;
+  let lastNotifiedRows = 0;
+  let lastNotifiedBytes = 0;
 
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
     buffer += value;
+    bytesRead += value.length;
     let rowEnd = buffer.indexOf("</row>");
     while (rowEnd >= 0) {
       const rowStart = buffer.lastIndexOf("<row", rowEnd);
@@ -160,15 +230,24 @@ async function readSheetRowsStreaming(file: File, entry: ZipEntry, sharedStrings
       }
       const parsed = parseSheetRow(buffer.slice(rowStart, rowEnd + 6), sharedStrings);
       if (parsed.some((cell) => !isBlank(cell))) rows.push(parsed);
-      if (rows.length % 1000 === 0) onRows(rows.length);
+      if (rows.length - lastNotifiedRows >= 1000) {
+        lastNotifiedRows = rows.length;
+        lastNotifiedBytes = bytesRead;
+        onProgress({ rows: rows.length, bytesRead: Math.min(bytesRead, entry.uncompressedSize || bytesRead) });
+      }
       buffer = buffer.slice(rowEnd + 6);
       rowEnd = buffer.indexOf("</row>");
+    }
+    if (bytesRead - lastNotifiedBytes >= 1_000_000) {
+      lastNotifiedBytes = bytesRead;
+      onProgress({ rows: rows.length, bytesRead: Math.min(bytesRead, entry.uncompressedSize || bytesRead) });
     }
     if (buffer.length > 25_000_000) {
       const lastRowStart = buffer.lastIndexOf("<row");
       buffer = lastRowStart > 0 ? buffer.slice(lastRowStart) : buffer.slice(-1_000_000);
     }
   }
+  onProgress({ rows: rows.length, bytesRead: entry.uncompressedSize || bytesRead });
   return rows;
 }
 

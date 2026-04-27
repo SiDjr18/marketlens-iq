@@ -1,16 +1,32 @@
-import type { RawRow } from "../utils/types";
+import type { ParseProgress, RawRow } from "../utils/types";
 
-export async function parseCsv(file: File, delimiter?: string): Promise<{ rows: RawRow[]; errors: string[] }> {
+type ProgressCallback = (progress: ParseProgress) => void;
+
+export async function parseCsv(file: File, delimiter?: string, onProgress?: ProgressCallback): Promise<{ rows: RawRow[]; errors: string[] }> {
   const Papa = (await import("papaparse")).default;
   return new Promise((resolve) => {
+    const rows: RawRow[] = [];
     Papa.parse<RawRow>(file, {
       header: true,
       delimiter,
       skipEmptyLines: "greedy",
       dynamicTyping: false,
       transformHeader: (header) => header.trim(),
+      chunk: (result) => {
+        result.data.forEach((row) => {
+          if (Object.values(row).some((value) => String(value ?? "").trim())) rows.push(row);
+        });
+        const cursor = Math.min(file.size, Number(result.meta.cursor) || 0);
+        onProgress?.({
+          phase: "parsing",
+          percent: boundedPercent(5 + (cursor / Math.max(file.size, 1)) * 90),
+          rowsProcessed: rows.length,
+          bytesProcessed: cursor,
+          totalBytes: file.size,
+          message: `${rows.length.toLocaleString("en-IN")} rows parsed from ${file.name}`
+        });
+      },
       complete: (result) => {
-        const rows = result.data.filter((row) => Object.values(row).some((value) => String(value ?? "").trim()));
         resolve({
           rows,
           errors: result.errors.map((error) => `${error.message} at row ${error.row ?? "unknown"}`)
@@ -19,4 +35,8 @@ export async function parseCsv(file: File, delimiter?: string): Promise<{ rows: 
       error: (error) => resolve({ rows: [], errors: [error.message] })
     });
   });
+}
+
+function boundedPercent(value: number) {
+  return Math.max(1, Math.min(99, Math.round(value)));
 }

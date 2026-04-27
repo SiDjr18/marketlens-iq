@@ -132,6 +132,8 @@ export type ParseProgress = {
   phase: "idle" | "reading" | "parsing" | "mapping" | "ready" | "error";
   percent: number;
   rowsProcessed: number;
+  bytesProcessed?: number;
+  totalBytes?: number;
   message: string;
 };
 
