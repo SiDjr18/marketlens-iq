@@ -1,6 +1,7 @@
 import { parseCsv } from "./parseCsv";
 import { parseExcel } from "./parseExcel";
 import { parseJson } from "./parseJson";
+import { parseSql } from "./parseSql";
 import type { ParseProgress, ParsedDataset, RawRow, UploadMeta } from "../utils/types";
 
 type ProgressCallback = (progress: ParseProgress) => void;
@@ -51,6 +52,49 @@ async function parseCsvInWorker(file: File, delimiter: string | undefined, onPro
       resolve(parseCsv(file, delimiter, onProgress));
     };
     worker.postMessage({ file, delimiter, kind: "csv" });
+  });
+}
+
+async function parseSqlInWorker(file: File, onProgress?: ProgressCallback) {
+  if (!window.Worker) return parseSql(file, onProgress);
+  return new Promise<{ rows: RawRow[]; errors: string[] }>((resolve) => {
+    const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = (event: MessageEvent) => {
+      const data = event.data as {
+        type: string;
+        rowsProcessed?: number;
+        rows?: RawRow[];
+        errors?: string[];
+        error?: string;
+        message?: string;
+        percent?: number;
+        bytesProcessed?: number;
+        totalBytes?: number;
+      };
+      if (data.type === "progress") {
+        onProgress?.({
+          phase: "parsing",
+          percent: data.percent ?? 50,
+          rowsProcessed: data.rowsProcessed ?? 0,
+          bytesProcessed: data.bytesProcessed,
+          totalBytes: data.totalBytes,
+          message: data.message ?? `${(data.rowsProcessed ?? 0).toLocaleString("en-IN")} SQL rows processed`
+        });
+      }
+      if (data.type === "complete") {
+        worker.terminate();
+        resolve({ rows: data.rows ?? [], errors: data.errors ?? [] });
+      }
+      if (data.type === "error") {
+        worker.terminate();
+        resolve({ rows: [], errors: [data.error ?? "Worker SQL parsing failed."] });
+      }
+    };
+    worker.onerror = () => {
+      worker.terminate();
+      resolve(parseSql(file, onProgress));
+    };
+    worker.postMessage({ file, kind: "sql" });
   });
 }
 
@@ -108,7 +152,12 @@ export async function parseFile(file: File, onProgress?: ProgressCallback): Prom
 
   if (extension === "csv" || extension === "tsv") {
     const delimiter = extension === "tsv" ? "\t" : undefined;
-    const parsed = file.size > 8 * 1024 * 1024 ? await parseCsvInWorker(file, delimiter, onProgress) : await parseCsv(file, delimiter, onProgress);
+    const parsed = file.size > 2 * 1024 * 1024 ? await parseCsvInWorker(file, delimiter, onProgress) : await parseCsv(file, delimiter, onProgress);
+    tables = { Data: parsed.rows };
+    sheetNames = ["Data"];
+    errors = parsed.errors;
+  } else if (extension === "sql") {
+    const parsed = await parseSqlInWorker(file, onProgress);
     tables = { Data: parsed.rows };
     sheetNames = ["Data"];
     errors = parsed.errors;
@@ -124,7 +173,7 @@ export async function parseFile(file: File, onProgress?: ProgressCallback): Prom
     sheetNames = ["Data"];
     errors = parsed.errors;
   } else {
-    errors = [`Unsupported file type .${extension}. Use XLSX, XLS, CSV, TSV, or JSON.`];
+    errors = [`Unsupported file type .${extension}. Use XLSX, XLS, CSV, TSV, SQL, or JSON.`];
   }
 
   const activeSheet = sheetNames.find((sheet) => (tables[sheet] ?? []).length > 0) ?? sheetNames[0] ?? "Data";

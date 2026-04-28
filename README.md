@@ -1,11 +1,11 @@
 # MarketLens IQ
 
-MarketLens IQ is a static, browser-based pharma commercial intelligence dashboard for IMS, IQVIA, IPM, Excel, CSV, TSV, and JSON datasets. It converts uploaded market data into mapped pharma fields, data health checks, executive dashboards, competitor positioning, strategy insights, brand plans, and exportable reports.
+MarketLens IQ is a static, browser-based pharma commercial intelligence dashboard for IMS, IQVIA, IPM, Excel, CSV, TSV, SQL, and JSON datasets. It converts uploaded market data into mapped pharma fields, data health checks, executive dashboards, competitor positioning, strategy insights, brand plans, and exportable reports.
 
 ## What It Does
 
-- Upload `.xlsx`, `.xls`, `.csv`, `.tsv`, or `.json`
-- Parse CSV/TSV in chunks with a Web Worker for large files
+- Upload `.xlsx`, `.xls`, `.csv`, `.tsv`, `.sql`, or `.json`
+- Parse CSV/TSV and SQL dumps in chunks with a Web Worker for large files
 - Parse Excel workbooks with SheetJS and sheet selection
 - Auto-map pharma fields including Brand, Company, Therapy, Molecule, Acute/Chronic, Indian/MNC, Plain/Combination, Value Sales, Units, Volume, MAT, Month, and Pack
 - Block strategy and brand-plan output until the data health gate passes
@@ -65,4 +65,4 @@ https://<username>.github.io/<repo-name>/
 
 ## Large File Notes
 
-CSV and TSV files are best for very large IMS/IQVIA exports because they can be parsed incrementally in a worker. Excel parsing happens in the browser and depends on the user's device memory and browser limits. For very large Excel workbooks, export the relevant worksheet as CSV when possible.
+CSV, TSV, and SQL dump files are best for very large IMS/IQVIA exports because they can be parsed incrementally in a worker. Excel parsing happens in the browser and depends on the user's device memory and browser limits. For very large Excel workbooks, export the relevant worksheet as CSV when possible.

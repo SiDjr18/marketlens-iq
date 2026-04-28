@@ -10,8 +10,22 @@ type WideColumn = {
   kind: WideMetricKind;
 };
 
+export type FilterOptionBuckets = {
+  marketType: string[];
+  companyType: string[];
+  productType: string[];
+  brand: string[];
+  therapy: string[];
+  molecule: string[];
+  company: string[];
+  timePeriod: string[];
+};
+
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const MONTH_PATTERN = "(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC)'(\\d{2})";
+const columnsCache = new WeakMap<RawRow[], string[]>();
+const wideColumnsCache = new WeakMap<RawRow[], WideColumn[]>();
+const timePeriodsCache = new WeakMap<RawRow[], string[]>();
 
 export function fieldText(row: RawRow, mapping: FieldMapping, field: PharmaField): string {
   const column = mapping[field];
@@ -35,7 +49,11 @@ function selectedIncludes(values: string[], actual: string): boolean {
 }
 
 function columnsOf(rows: RawRow[]): string[] {
-  return Object.keys(rows[0] ?? {});
+  const cached = columnsCache.get(rows);
+  if (cached) return cached;
+  const columns = Object.keys(rows[0] ?? {});
+  columnsCache.set(rows, columns);
+  return columns;
 }
 
 function readColumnNumber(row: RawRow, column?: string): number {
@@ -97,6 +115,14 @@ function wideColumns(columns: string[]): WideColumn[] {
     .sort((a, b) => periodSortValue(a.period) - periodSortValue(b.period));
 }
 
+function wideColumnsForRows(rows: RawRow[]): WideColumn[] {
+  const cached = wideColumnsCache.get(rows);
+  if (cached) return cached;
+  const columns = wideColumns(columnsOf(rows));
+  wideColumnsCache.set(rows, columns);
+  return columns;
+}
+
 function isNativeMonthlySeries(column: WideColumn): boolean {
   const key = normalizedHeader(column.column);
   if (column.kind === "valueMonth") return new RegExp(`^${MONTH_PATTERN}$`).test(key);
@@ -133,12 +159,16 @@ function firstColumnForPeriod(columns: string[], metric: PharmaField, period: st
 }
 
 export function availableTimePeriods(rows: RawRow[]): string[] {
-  const periods = new Set(wideColumns(columnsOf(rows)).map((column) => column.period));
-  return Array.from(periods).sort((a, b) => periodSortValue(a) - periodSortValue(b));
+  const cached = timePeriodsCache.get(rows);
+  if (cached) return cached;
+  const periods = new Set(wideColumnsForRows(rows).map((column) => column.period));
+  const sorted = Array.from(periods).sort((a, b) => periodSortValue(a) - periodSortValue(b));
+  timePeriodsCache.set(rows, sorted);
+  return sorted;
 }
 
 export function widePeriodColumns(rows: RawRow[], metric: PharmaField = "valueSales"): string[] {
-  const columns = wideColumns(columnsOf(rows));
+  const columns = wideColumnsForRows(rows);
   for (const kind of preferredKinds(metric, false)) {
     const matches = columns.filter((column) => column.kind === kind);
     const nativeMonthly = matches.filter(isNativeMonthlySeries);
@@ -182,21 +212,120 @@ export function metricValue(row: RawRow, mapping: FieldMapping, metric: PharmaFi
 }
 
 export function applyFilters(rows: RawRow[], mapping: FieldMapping, filters: FilterState): RawRow[] {
-  const widePeriods = availableTimePeriods(rows);
-  const hasWideTimeSelection = filters.timePeriod.length > 0 && filters.timePeriod.some((period) => widePeriods.includes(period));
-  return rows.filter((row) => {
-    const period = mapping.month ? parsePeriod(row[mapping.month]) : "";
-    return (
-      selectedIncludes(filters.marketType, fieldText(row, mapping, "marketType")) &&
-      selectedIncludes(filters.companyType, fieldText(row, mapping, "companyType")) &&
-      selectedIncludes(filters.productType, fieldText(row, mapping, "productType")) &&
-      selectedIncludes(filters.brand, fieldText(row, mapping, "brand")) &&
-      selectedIncludes(filters.therapy, fieldText(row, mapping, "therapy")) &&
-      selectedIncludes(filters.molecule, fieldText(row, mapping, "molecule")) &&
-      selectedIncludes(filters.company, fieldText(row, mapping, "company")) &&
-      (hasWideTimeSelection || selectedIncludes(filters.timePeriod, period))
-    );
-  });
+  const compiled = compileFilters(rows, mapping, filters);
+  const out: RawRow[] = [];
+  for (const row of rows) {
+    if (rowMatchesFilters(row, compiled)) out.push(row);
+  }
+  return out;
+}
+
+export function collectFilterOptions(rows: RawRow[], mapping: FieldMapping, filters: FilterState, maxOptions = 500): FilterOptionBuckets {
+  const compiled = compileFilters(rows, mapping, filters);
+  const marketType = new Set<string>();
+  const companyType = new Set<string>();
+  const productType = new Set<string>();
+  const brand = new Set<string>();
+  const therapy = new Set<string>();
+  const molecule = new Set<string>();
+  const company = new Set<string>();
+  const timePeriod = new Set<string>();
+  const add = (set: Set<string>, value: string, limit = maxOptions) => {
+    if (value && set.size < limit) set.add(value);
+  };
+
+  for (const row of rows) {
+    if (!rowMatchesFilters(row, compiled)) continue;
+    add(marketType, readMappedText(row, compiled.marketTypeColumn));
+    add(companyType, readMappedText(row, compiled.companyTypeColumn));
+    add(productType, readMappedText(row, compiled.productTypeColumn));
+    add(brand, readMappedText(row, compiled.brandColumn));
+    add(therapy, readMappedText(row, compiled.therapyColumn));
+    add(molecule, readMappedText(row, compiled.moleculeColumn));
+    add(company, readMappedText(row, compiled.companyColumn));
+    if (compiled.monthColumn) add(timePeriod, parsePeriod(row[compiled.monthColumn]), 250);
+  }
+  for (const period of availableTimePeriods(rows).slice(0, 250)) add(timePeriod, period, 250);
+
+  return {
+    marketType: Array.from(marketType),
+    companyType: Array.from(companyType),
+    productType: Array.from(productType),
+    brand: Array.from(brand),
+    therapy: Array.from(therapy),
+    molecule: Array.from(molecule),
+    company: Array.from(company),
+    timePeriod: Array.from(timePeriod)
+  };
+}
+
+type CompiledFilters = {
+  marketType?: Set<string>;
+  companyType?: Set<string>;
+  productType?: Set<string>;
+  brand?: Set<string>;
+  therapy?: Set<string>;
+  molecule?: Set<string>;
+  company?: Set<string>;
+  timePeriod?: Set<string>;
+  hasWideTimeSelection: boolean;
+  marketTypeColumn?: string;
+  companyTypeColumn?: string;
+  productTypeColumn?: string;
+  brandColumn?: string;
+  therapyColumn?: string;
+  moleculeColumn?: string;
+  companyColumn?: string;
+  monthColumn?: string;
+};
+
+function compileFilters(rows: RawRow[], mapping: FieldMapping, filters: FilterState): CompiledFilters {
+  const widePeriodSet = new Set(availableTimePeriods(rows));
+  return {
+    marketType: selectedSet(filters.marketType),
+    companyType: selectedSet(filters.companyType),
+    productType: selectedSet(filters.productType),
+    brand: selectedSet(filters.brand),
+    therapy: selectedSet(filters.therapy),
+    molecule: selectedSet(filters.molecule),
+    company: selectedSet(filters.company),
+    timePeriod: selectedSet(filters.timePeriod),
+    hasWideTimeSelection: filters.timePeriod.length > 0 && filters.timePeriod.some((period) => widePeriodSet.has(period)),
+    marketTypeColumn: mapping.marketType,
+    companyTypeColumn: mapping.companyType,
+    productTypeColumn: mapping.productType,
+    brandColumn: mapping.brand,
+    therapyColumn: mapping.therapy,
+    moleculeColumn: mapping.molecule,
+    companyColumn: mapping.company,
+    monthColumn: mapping.month
+  };
+}
+
+function selectedSet(values: string[]): Set<string> | undefined {
+  return values.length ? new Set(values.map((value) => value.toLowerCase())) : undefined;
+}
+
+function selectedMatches(values: Set<string> | undefined, actual: string): boolean {
+  return !values || values.has(actual.toLowerCase());
+}
+
+function readMappedText(row: RawRow, column?: string): string {
+  return column ? cellText(row[column]) : "";
+}
+
+function rowMatchesFilters(row: RawRow, filters: CompiledFilters): boolean {
+  const period = filters.monthColumn ? parsePeriod(row[filters.monthColumn]) : "";
+  return (
+    selectedMatches(filters.marketType, readMappedText(row, filters.marketTypeColumn)) &&
+    selectedMatches(filters.companyType, readMappedText(row, filters.companyTypeColumn)) &&
+    selectedMatches(filters.productType, readMappedText(row, filters.productTypeColumn)) &&
+    selectedMatches(filters.brand, readMappedText(row, filters.brandColumn)) &&
+    selectedMatches(filters.therapy, readMappedText(row, filters.therapyColumn)) &&
+    selectedMatches(filters.molecule, readMappedText(row, filters.moleculeColumn)) &&
+    selectedMatches(filters.company, readMappedText(row, filters.companyColumn)) &&
+    (filters.hasWideTimeSelection || selectedMatches(filters.timePeriod, period))
+  );
 }
 
 export function aggregateByDimension(

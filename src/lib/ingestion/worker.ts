@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 import Papa from "papaparse";
 import type { RawRow } from "../utils/types";
+import { appendSqlStatementRows, parseCopyDataRow, parseCopyHeader, type CopyState } from "./parseSql";
 
 type ZipEntry = {
   name: string;
@@ -13,18 +14,17 @@ type ZipEntry = {
 type WorkerRequest = {
   file: File;
   delimiter?: string;
-  kind: "csv" | "xlsx";
-};
-
-type SheetProgress = {
-  rows: number;
-  bytesRead: number;
+  kind: "csv" | "xlsx" | "sql";
 };
 
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   const { file, delimiter, kind } = event.data;
   if (kind === "xlsx") {
     void parseXlsx(file);
+    return;
+  }
+  if (kind === "sql") {
+    void parseSqlDump(file);
     return;
   }
   parseDelimited(file, delimiter);
@@ -40,6 +40,7 @@ function parseDelimited(file: File, delimiter?: string) {
     skipEmptyLines: "greedy",
     dynamicTyping: false,
     transformHeader: (header) => header.trim(),
+    chunkSize: 1024 * 1024,
     chunk: (result) => {
       result.data.forEach((row) => {
         if (Object.values(row).some((value) => String(value ?? "").trim())) rows.push(row);
@@ -63,6 +64,62 @@ function parseDelimited(file: File, delimiter?: string) {
   });
 }
 
+async function parseSqlDump(file: File) {
+  try {
+    const rows: RawRow[] = [];
+    const errors: string[] = [];
+    const reader = file.stream().pipeThrough(new TextDecoderStream()).getReader();
+    let copyState: CopyState | null = null;
+    let lineBuffer = "";
+    let statement = "";
+    let bytesProcessed = 0;
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      bytesProcessed += value.length;
+      lineBuffer += value;
+      const lines = lineBuffer.split(/\r?\n/);
+      lineBuffer = lines.pop() ?? "";
+      for (const line of lines) {
+        const copyHeader = parseCopyHeader(line);
+        if (copyHeader) {
+          copyState = copyHeader;
+          continue;
+        }
+        if (copyState) {
+          if (line.trim() === "\\.") {
+            copyState = null;
+            continue;
+          }
+          rows.push(parseCopyDataRow(line, copyState.columns));
+          continue;
+        }
+        statement += `${line}\n`;
+        if (endsSqlStatement(statement)) {
+          appendSqlStatementRows(statement, rows, errors);
+          statement = "";
+        }
+      }
+      postProgress({
+        percent: boundedPercent(5 + (bytesProcessed / Math.max(file.size, 1)) * 90),
+        rowsProcessed: rows.length,
+        bytesProcessed: Math.min(bytesProcessed, file.size),
+        totalBytes: file.size,
+        message: `${rows.length.toLocaleString("en-IN")} SQL rows parsed`
+      });
+    }
+    if (lineBuffer) {
+      if (copyState && lineBuffer.trim() !== "\\.") rows.push(parseCopyDataRow(lineBuffer, copyState.columns));
+      else statement += lineBuffer;
+    }
+    if (statement.trim()) appendSqlStatementRows(statement, rows, errors);
+    self.postMessage({ type: "complete", rows, errors });
+  } catch (error) {
+    self.postMessage({ type: "error", error: error instanceof Error ? error.message : "Unable to parse SQL dump." });
+  }
+}
+
 async function parseXlsx(file: File) {
   try {
     if (!("DecompressionStream" in self)) {
@@ -70,13 +127,7 @@ async function parseXlsx(file: File) {
     }
     postProgress({ percent: 5, rowsProcessed: 0, bytesProcessed: 0, totalBytes: file.size, message: "Reading Excel workbook directory" });
     const entries = await readZipDirectory(file);
-    postProgress({
-      percent: 12,
-      rowsProcessed: 0,
-      bytesProcessed: Math.min(file.size, 1024 * 1024),
-      totalBytes: file.size,
-      message: "Workbook directory loaded"
-    });
+    postProgress({ percent: 12, rowsProcessed: 0, bytesProcessed: Math.min(file.size, 1024 * 1024), totalBytes: file.size, message: "Workbook directory loaded" });
     const workbookEntry = entries.get("xl/workbook.xml");
     const relsEntry = entries.get("xl/_rels/workbook.xml.rels");
     if (!workbookEntry || !relsEntry) throw new Error("Workbook metadata is missing.");
@@ -121,7 +172,7 @@ async function parseXlsx(file: File) {
         totalBytes: totalSheetBytes,
         message: `Streaming ${sheet.name}`
       });
-      const tableRows = await readSheetRowsStreaming(file, sheet.entry, sharedStrings, (progress) => {
+      const objects = withImsReferenceFields(await readSheetObjectsStreaming(file, sheet.entry, sharedStrings, (progress) => {
         const bytesRead = completedSheetBytes + progress.bytesRead;
         postProgress({
           percent: boundedPercent(30 + (bytesRead / Math.max(totalSheetBytes, 1)) * 60),
@@ -130,16 +181,15 @@ async function parseXlsx(file: File) {
           totalBytes: totalSheetBytes,
           message: `Streaming ${sheet.name}`
         });
-      });
+      }));
       completedSheetBytes += Math.max(sheet.entry.uncompressedSize, 1);
       postProgress({
         percent: boundedPercent(30 + (completedSheetBytes / Math.max(totalSheetBytes, 1)) * 60),
-        rowsProcessed: totalRows + tableRows.length,
+        rowsProcessed: totalRows + objects.length,
         bytesProcessed: completedSheetBytes,
         totalBytes: totalSheetBytes,
         message: `Converting ${sheet.name} rows`
       });
-      const objects = withImsReferenceFields(tableToObjects(tableRows));
       tables[sheet.name] = objects;
       totalRows += objects.length;
     }
@@ -206,8 +256,15 @@ async function readZipEntryText(file: File, entry: ZipEntry, onBytes?: (bytesRea
   return text;
 }
 
-async function readSheetRowsStreaming(file: File, entry: ZipEntry, sharedStrings: string[], onProgress: (progress: SheetProgress) => void): Promise<unknown[][]> {
-  const rows: unknown[][] = [];
+type SheetProgress = {
+  rows: number;
+  bytesRead: number;
+};
+
+async function readSheetObjectsStreaming(file: File, entry: ZipEntry, sharedStrings: string[], onProgress: (progress: SheetProgress) => void): Promise<RawRow[]> {
+  const rows: RawRow[] = [];
+  const headerCandidates: unknown[][] = [];
+  let headers: string[] | null = null;
   const stream = await zipEntryStream(file, entry);
   const reader = decodeStream(stream).getReader();
   let buffer = "";
@@ -229,11 +286,26 @@ async function readSheetRowsStreaming(file: File, entry: ZipEntry, sharedStrings
         continue;
       }
       const parsed = parseSheetRow(buffer.slice(rowStart, rowEnd + 6), sharedStrings);
-      if (parsed.some((cell) => !isBlank(cell))) rows.push(parsed);
-      if (rows.length - lastNotifiedRows >= 1000) {
-        lastNotifiedRows = rows.length;
+      if (parsed.some((cell) => !isBlank(cell))) {
+        if (!headers) {
+          headerCandidates.push(parsed);
+          if (headerCandidates.length >= 30) {
+            const detected = detectHeaders(headerCandidates);
+            headers = detected.headers;
+            for (let candidateIndex = detected.headerIndex + 1; candidateIndex < headerCandidates.length; candidateIndex += 1) {
+              rows.push(rowToObject(headerCandidates[candidateIndex], headers));
+            }
+            headerCandidates.length = 0;
+          }
+        } else {
+          rows.push(rowToObject(parsed, headers));
+        }
+      }
+      const parsedRows = rows.length + headerCandidates.length;
+      if (parsedRows - lastNotifiedRows >= 1000) {
+        lastNotifiedRows = parsedRows;
         lastNotifiedBytes = bytesRead;
-        onProgress({ rows: rows.length, bytesRead: Math.min(bytesRead, entry.uncompressedSize || bytesRead) });
+        onProgress({ rows: parsedRows, bytesRead: Math.min(bytesRead, entry.uncompressedSize || bytesRead) });
       }
       buffer = buffer.slice(rowEnd + 6);
       rowEnd = buffer.indexOf("</row>");
@@ -247,8 +319,34 @@ async function readSheetRowsStreaming(file: File, entry: ZipEntry, sharedStrings
       buffer = lastRowStart > 0 ? buffer.slice(lastRowStart) : buffer.slice(-1_000_000);
     }
   }
+  if (!headers && headerCandidates.length) {
+    const detected = detectHeaders(headerCandidates);
+    headers = detected.headers;
+    for (let candidateIndex = detected.headerIndex + 1; candidateIndex < headerCandidates.length; candidateIndex += 1) {
+      rows.push(rowToObject(headerCandidates[candidateIndex], headers));
+    }
+  }
   onProgress({ rows: rows.length, bytesRead: entry.uncompressedSize || bytesRead });
   return rows;
+}
+
+function endsSqlStatement(statement: string): boolean {
+  let quote: "'" | "\"" | "`" | null = null;
+  for (let index = 0; index < statement.length; index += 1) {
+    const char = statement[index];
+    const next = statement[index + 1];
+    if (quote) {
+      if (char === quote) {
+        if (quote === "'" && next === "'") index += 1;
+        else quote = null;
+      } else if (char === "\\" && next) {
+        index += 1;
+      }
+      continue;
+    }
+    if (char === "'" || char === "\"" || char === "`") quote = char;
+  }
+  return !quote && /;\s*$/.test(statement);
 }
 
 function decodeStream(stream: ReadableStream<Uint8Array>): ReadableStream<string> {
@@ -295,6 +393,12 @@ function parseSheetRow(rowXml: string, sharedStrings: string[]): unknown[] {
 function tableToObjects(table: unknown[][]): RawRow[] {
   const nonEmptyRows = table.filter((row) => row.some((cell) => !isBlank(cell)));
   if (!nonEmptyRows.length) return [];
+  const { headers, headerIndex } = detectHeaders(nonEmptyRows);
+  return nonEmptyRows.slice(headerIndex + 1).map((row) => rowToObject(row, headers));
+}
+
+function detectHeaders(nonEmptyRows: unknown[][]): { headers: string[]; headerIndex: number } {
+  if (!nonEmptyRows.length) return { headers: [], headerIndex: 0 };
   let headerIndex = 0;
   let bestScore = -Infinity;
   nonEmptyRows.slice(0, 30).forEach((row, index) => {
@@ -309,13 +413,15 @@ function tableToObjects(table: unknown[][]): RawRow[] {
     }
   });
   const headers = uniquifyHeaders(nonEmptyRows[headerIndex].map((cell, index) => String(cell ?? "").trim() || `Column ${index + 1}`));
-  return nonEmptyRows.slice(headerIndex + 1).map((row) => {
-    const record: RawRow = {};
-    headers.forEach((header, index) => {
-      record[header] = coerceCell(row[index]);
-    });
-    return record;
+  return { headers, headerIndex };
+}
+
+function rowToObject(row: unknown[], headers: string[]): RawRow {
+  const record: RawRow = {};
+  headers.forEach((header, index) => {
+    record[header] = coerceCell(row[index]);
   });
+  return record;
 }
 
 function withImsReferenceFields(rows: RawRow[]): RawRow[] {

@@ -33,12 +33,12 @@ export function UploadDropzone({ inputRef, onFile, compact = false }: UploadDrop
       onDragOver={(event) => event.preventDefault()}
       className={`rounded-lg border border-dashed border-teal/40 bg-white p-8 shadow-soft ${compact ? "p-4" : ""}`}
     >
-      <input ref={activeInputRef} type="file" accept=".xlsx,.xls,.csv,.tsv,.json" className="hidden" onChange={onChange} />
+      <input ref={activeInputRef} type="file" accept=".xlsx,.xls,.csv,.tsv,.sql,.json" className="hidden" onChange={onChange} />
       <div className="mx-auto max-w-3xl text-center">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-lg border border-teal/20 bg-teal-50 text-teal">
           {compact ? <FileSpreadsheet className="h-7 w-7" /> : <UploadCloud className="h-8 w-8" />}
         </div>
-        <h2 className="mt-4 text-2xl font-black text-navy">Upload IMS, IQVIA, IPM, Excel, CSV, or JSON data</h2>
+        <h2 className="mt-4 text-2xl font-black text-navy">Upload IMS, IQVIA, IPM, Excel, CSV, SQL, or JSON data</h2>
         <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
           Files are analyzed in your browser. The app maps pharma fields, checks data health, and only generates strategy when the data is reliable.
         </p>

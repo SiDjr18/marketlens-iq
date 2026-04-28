@@ -12,10 +12,11 @@ export async function parseCsv(file: File, delimiter?: string, onProgress?: Prog
       skipEmptyLines: "greedy",
       dynamicTyping: false,
       transformHeader: (header) => header.trim(),
+      chunkSize: 1024 * 1024,
       chunk: (result) => {
-        result.data.forEach((row) => {
+        for (const row of result.data) {
           if (Object.values(row).some((value) => String(value ?? "").trim())) rows.push(row);
-        });
+        }
         const cursor = Math.min(file.size, Number(result.meta.cursor) || 0);
         onProgress?.({
           phase: "parsing",
