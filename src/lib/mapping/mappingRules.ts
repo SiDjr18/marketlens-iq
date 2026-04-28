@@ -1,10 +1,10 @@
 import type { PharmaField } from "../utils/types";
 
 export const mappingAliases: Record<PharmaField, string[]> = {
-  brand: ["BRANDS", "marketlensbrand", "brand", "brands", "product", "sku", "productname", "brandname", "item", "drugname"],
+  brand: ["BRANDS", "marketlensbrand", "brand", "brands", "rowlabels", "rowlabel", "product", "sku", "productname", "brandname", "item", "drugname"],
   company: ["COMPANY", "MANUFACT. DESC", "MANUFAC CODE", "marketlenscompany", "company", "corporation", "manufacturer", "manufactdesc", "manufact", "mfr", "firm", "marketedby", "division"],
   therapy: ["SUPERGROUP", "GROUP", "SUBGROUP", "marketlenstherapy", "therapy", "therapeutic", "therapyarea", "class", "segment", "therapeuticarea"],
-  molecule: ["MOLECULE_DESC", "NFC_DESC", "NFC", "marketlensmolecule", "moleculedesc", "molecule", "composition", "ingredient", "salt", "generic", "moleculename", "activeingredient"],
+  molecule: ["MOLECULE_DESC", "PARENT MOLECULE", "PARENT_MOLECULE", "PARENT MOLECULE NAME", "NFC_DESC", "NFC", "marketlensmolecule", "moleculedesc", "parentmolecule", "molecule", "composition", "ingredient", "salt", "generic", "moleculename", "activeingredient"],
   marketType: ["ACUTE_CHRONIC", "acutechronic", "acute_chronic", "markettype", "acute", "chronic", "therapytype"],
   companyType: ["INDIAN_MNC", "companytype", "origin", "indianmnc", "indian_mnc", "mncindian", "ownership", "corporatetype"],
   productType: ["Plain/Combination", "producttype", "plaincombination", "plainfdc", "fdc", "combination", "mono", "plain"],

@@ -2,6 +2,7 @@
 import Papa from "papaparse";
 import type { RawRow } from "../utils/types";
 import { appendSqlStatementRows, parseCopyDataRow, parseCopyHeader, type CopyState } from "./parseSql";
+import { isMeasureLikeHeader } from "../mapping/semanticColumns";
 
 type ZipEntry = {
   name: string;
@@ -404,9 +405,11 @@ function detectHeaders(nonEmptyRows: unknown[][]): { headers: string[]; headerIn
   nonEmptyRows.slice(0, 30).forEach((row, index) => {
     const cells = row.map((cell) => String(cell ?? "").trim()).filter(Boolean);
     const knownPharmaHeaders = cells.filter((cell) => /^(pfc|ind|pack[_\s.-]*desc|brands?|manufact|indian[_\s.-]*mnc|group|acute[_\s.-]*chronic|nfc|plain)$/i.test(cell)).length;
+    const pivotHeaders = cells.filter((cell) => isMeasureLikeHeader(cell)).length;
+    const rowLabelHeaders = cells.filter((cell) => /^(row\s*labels?|brand|brands?|product|parent\s*molecule|molecule[_\s.-]*desc)$/i.test(cell)).length;
     const unique = new Set(cells.map(normalize)).size;
     const numericCells = cells.filter((cell) => parseNumber(cell) !== null).length;
-    const score = knownPharmaHeaders * 12 + Math.min(cells.length, 80) * 2 + unique - numericCells * 0.9 - index * 0.1;
+    const score = knownPharmaHeaders * 14 + rowLabelHeaders * 10 + Math.min(cells.length, 80) * 2 + unique - pivotHeaders * 8 - numericCells * 0.9 - index * 0.1;
     if (cells.length >= 2 && score > bestScore) {
       bestScore = score;
       headerIndex = index;

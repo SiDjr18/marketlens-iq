@@ -1,6 +1,7 @@
 import { cellText, parsePeriod, toNumber } from "../utils/formatters";
 import type { AggregateRow, FieldMapping, FilterState, PharmaField, RawRow } from "../utils/types";
 import { calculateDimensionMetrics } from "./pharmaMetrics";
+import { isUsableDimensionValue } from "../mapping/semanticColumns";
 
 type WideMetricKind = "valueMonth" | "valueMat" | "unitMonth" | "unitMat" | "volumeMonth" | "volumeMat";
 
@@ -236,13 +237,13 @@ export function collectFilterOptions(rows: RawRow[], mapping: FieldMapping, filt
 
   for (const row of rows) {
     if (!rowMatchesFilters(row, compiled)) continue;
-    add(marketType, readMappedText(row, compiled.marketTypeColumn));
-    add(companyType, readMappedText(row, compiled.companyTypeColumn));
-    add(productType, readMappedText(row, compiled.productTypeColumn));
-    add(brand, readMappedText(row, compiled.brandColumn));
-    add(therapy, readMappedText(row, compiled.therapyColumn));
-    add(molecule, readMappedText(row, compiled.moleculeColumn));
-    add(company, readMappedText(row, compiled.companyColumn));
+    addDimension(marketType, readMappedText(row, compiled.marketTypeColumn), maxOptions);
+    addDimension(companyType, readMappedText(row, compiled.companyTypeColumn), maxOptions);
+    addDimension(productType, readMappedText(row, compiled.productTypeColumn), maxOptions);
+    addDimension(brand, readMappedText(row, compiled.brandColumn), maxOptions);
+    addDimension(therapy, readMappedText(row, compiled.therapyColumn), maxOptions);
+    addDimension(molecule, readMappedText(row, compiled.moleculeColumn), maxOptions);
+    addDimension(company, readMappedText(row, compiled.companyColumn), maxOptions);
     if (compiled.monthColumn) add(timePeriod, parsePeriod(row[compiled.monthColumn]), 250);
   }
   for (const period of availableTimePeriods(rows).slice(0, 250)) add(timePeriod, period, 250);
@@ -257,6 +258,10 @@ export function collectFilterOptions(rows: RawRow[], mapping: FieldMapping, filt
     company: Array.from(company),
     timePeriod: Array.from(timePeriod)
   };
+}
+
+function addDimension(set: Set<string>, value: string, limit: number) {
+  if (isUsableDimensionValue(value) && set.size < limit) set.add(value);
 }
 
 type CompiledFilters = {
@@ -356,6 +361,7 @@ export function aggregateByDimension(
   const map = new Map<string, AggregateRow>();
   rows.forEach((row) => {
     const name = cellText(row[dimensionColumn]) || "Unmapped";
+    if (!isUsableDimensionValue(name)) return;
     const existing =
       map.get(name) ??
       ({

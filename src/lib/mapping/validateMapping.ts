@@ -2,14 +2,23 @@ import { HEALTH_THRESHOLD, REQUIRED_FIELDS } from "../utils/constants";
 import { parsePeriod, toNumber } from "../utils/formatters";
 import type { DataHealth, FieldMapping, PharmaField, RawRow } from "../utils/types";
 import { numericFields } from "./mappingRules";
+import { isSafeDimensionColumn } from "./semanticColumns";
 
-function hasMinimumMapping(mapping: FieldMapping): boolean {
+function hasMinimumMapping(rows: RawRow[], mapping: FieldMapping): boolean {
   return Boolean(
     mapping.brand &&
+      isSafeDimensionColumn("brand", mapping.brand, rows) &&
       mapping.company &&
-      (mapping.therapy || mapping.molecule) &&
+      isSafeDimensionColumn("company", mapping.company, rows) &&
+      ((mapping.therapy && isSafeDimensionColumn("therapy", mapping.therapy, rows)) || (mapping.molecule && isSafeDimensionColumn("molecule", mapping.molecule, rows))) &&
       (mapping.valueSales || mapping.mat)
   );
+}
+
+function hasValidField(rows: RawRow[], mapping: FieldMapping, field: PharmaField): boolean {
+  const column = mapping[field];
+  if (!column) return false;
+  return isSafeDimensionColumn(field, column, rows);
 }
 
 export function validateMapping(rows: RawRow[], columns: string[], mapping: FieldMapping): DataHealth {
@@ -27,7 +36,7 @@ export function validateMapping(rows: RawRow[], columns: string[], mapping: Fiel
     };
   }
 
-  const missingFields = REQUIRED_FIELDS.filter((field) => !mapping[field]);
+  const missingFields = REQUIRED_FIELDS.filter((field) => !hasValidField(rows, mapping, field));
   const mappedRequired = REQUIRED_FIELDS.length - missingFields.length;
   const sample = rows.slice(0, Math.min(rows.length, 1500));
   let numericChecks = 0;
@@ -55,7 +64,7 @@ export function validateMapping(rows: RawRow[], columns: string[], mapping: Fiel
   });
 
   let confidence = Math.round((mappedRequired / REQUIRED_FIELDS.length) * 50);
-  confidence += hasMinimumMapping(mapping) ? 25 : 0;
+  confidence += hasMinimumMapping(rows, mapping) ? 25 : 0;
   confidence += Math.min(15, Math.round(numericParsingSuccess * 0.15));
   confidence += dateDetected ? 10 : mapping.month ? 4 : 0;
   confidence = Math.max(0, Math.min(100, confidence));
@@ -69,7 +78,7 @@ export function validateMapping(rows: RawRow[], columns: string[], mapping: Fiel
     duplicateRows,
     dateDetected,
     confidence,
-    status: confidence >= HEALTH_THRESHOLD && hasMinimumMapping(mapping) ? "ready" : "mapping-required"
+    status: confidence >= HEALTH_THRESHOLD && hasMinimumMapping(rows, mapping) ? "ready" : "mapping-required"
   };
 }
 

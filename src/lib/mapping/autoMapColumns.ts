@@ -2,6 +2,7 @@ import { mappingAliases } from "./mappingRules";
 import { normalizeKey, toNumber } from "../utils/formatters";
 import type { FieldMapping, MappingConfidence, PharmaField, RawRow } from "../utils/types";
 import { IMS_FIELD_MAP } from "../analytics/imsSchema";
+import { columnSemanticScore, isMeasureLikeHeader, isSafeDimensionColumn } from "./semanticColumns";
 
 type AutoMapResult = {
   mapping: FieldMapping;
@@ -41,10 +42,15 @@ function scoreColumn(field: PharmaField, column: string): number {
   return best;
 }
 
+function isDimensionField(field: PharmaField) {
+  return !["valueSales", "units", "volume", "mat"].includes(field);
+}
+
 function numericCandidates(columns: string[], rows: RawRow[], used: Set<string>) {
   const sample = rows.slice(0, Math.min(rows.length, 1200));
   return columns
     .filter((column) => !used.has(column))
+    .filter((column) => isMeasureLikeHeader(column) || /\b(mat|month|unit|qty|value|sales|revenue|amount|volume)\b/i.test(column))
     .filter((column) => !/^(pfc|ind|index|row|prodlnch|launch|year|month|date)$/i.test(normalizeKey(column)))
     .map((column) => {
       let checked = 0;
@@ -75,7 +81,7 @@ export function autoMapColumns(columns: string[], rows: RawRow[] = []): AutoMapR
   (Object.keys(imsCanonicalColumns) as PharmaField[]).forEach((field) => {
     const canonical = imsCanonicalColumns[field];
     const column = columns.find((candidate) => normalizeKey(candidate) === normalizeKey(canonical));
-    if (column) {
+    if (column && isSafeDimensionColumn(field, column, rows)) {
       mapping[field] = column;
       confidence[field] = 100;
       used.add(column);
@@ -86,7 +92,7 @@ export function autoMapColumns(columns: string[], rows: RawRow[] = []): AutoMapR
     if (mapping[field]) return;
     const canonical = marketLensCanonicalColumns[field];
     const column = columns.find((candidate) => normalizeKey(candidate) === normalizeKey(canonical));
-    if (column) {
+    if (column && isSafeDimensionColumn(field, column, rows)) {
       mapping[field] = column;
       confidence[field] = 96;
       used.add(column);
@@ -96,8 +102,12 @@ export function autoMapColumns(columns: string[], rows: RawRow[] = []): AutoMapR
   (Object.keys(mappingAliases) as PharmaField[]).forEach((field) => {
     if (mapping[field]) return;
     const candidates = columns
-      .map((column) => ({ column, score: scoreColumn(field, column) }))
+      .map((column) => ({
+        column,
+        score: scoreColumn(field, column) + (isDimensionField(field) ? Math.max(0, columnSemanticScore(field, column, rows) - 45) : 0)
+      }))
       .filter((candidate) => candidate.score >= 58 && !used.has(candidate.column))
+      .filter((candidate) => isSafeDimensionColumn(field, candidate.column, rows))
       .sort((a, b) => b.score - a.score);
 
     const best = candidates[0];
