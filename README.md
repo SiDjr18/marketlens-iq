@@ -63,6 +63,12 @@ Live URL format:
 https://<username>.github.io/<repo-name>/
 ```
 
+Large-data showcase page:
+
+```text
+https://<username>.github.io/<repo-name>/showcase.html
+```
+
 ## Large File Notes
 
 CSV, TSV, and SQL dump files are best for very large IMS/IQVIA exports because they can be parsed incrementally in a worker. Excel parsing happens in the browser and depends on the user's device memory and browser limits. For very large Excel workbooks, export the relevant worksheet as CSV when possible.

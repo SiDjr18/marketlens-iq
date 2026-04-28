@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MarketLens IQ | Large Data Upload Demo</title>
+    <meta
+      name="description"
+      content="A presentation page for MarketLens IQ showing how large Excel, CSV, TSV, SQL, and JSON pharma datasets are uploaded, parsed, mapped, filtered, and analyzed in the browser."
+    />
+    <style>
+      :root {
+        color-scheme: light;
+        --navy: #0f2742;
+        --ink: #152238;
+        --muted: #5f6f84;
+        --teal: #0f9f95;
+        --teal-dark: #08736c;
+        --blue: #2563eb;
+        --green: #12805c;
+        --amber: #b45309;
+        --paper: #f7fafc;
+        --line: #dbe4ef;
+        --white: #ffffff;
+        --shadow: 0 18px 44px rgba(15, 39, 66, 0.14);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        color: var(--ink);
+        background: var(--paper);
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .shell {
+        min-height: 100vh;
+      }
+
+      .hero {
+        min-height: 92vh;
+        display: grid;
+        align-items: center;
+        padding: 28px;
+        background:
+          linear-gradient(120deg, rgba(8, 115, 108, 0.92), rgba(15, 39, 66, 0.94)),
+          url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1400' height='900' viewBox='0 0 1400 900'%3E%3Crect width='1400' height='900' fill='%230f2742'/%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='.18'%3E%3Cpath d='M80 210h1240M80 360h1240M80 510h1240M80 660h1240M260 90v700M500 90v700M740 90v700M980 90v700M1220 90v700'/%3E%3C/g%3E%3Cg fill='%23ffffff' fill-opacity='.18'%3E%3Ccircle cx='260' cy='210' r='8'/%3E%3Ccircle cx='500' cy='360' r='8'/%3E%3Ccircle cx='740' cy='510' r='8'/%3E%3Ccircle cx='980' cy='360' r='8'/%3E%3Ccircle cx='1220' cy='660' r='8'/%3E%3C/g%3E%3C/svg%3E");
+        background-size: cover;
+        background-position: center;
+        color: var(--white);
+      }
+
+      .nav {
+        position: absolute;
+        top: 22px;
+        left: 28px;
+        right: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .brand {
+        font-weight: 900;
+        letter-spacing: 0;
+        font-size: 18px;
+      }
+
+      .nav a,
+      .cta {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 42px;
+        border-radius: 6px;
+        padding: 0 16px;
+        font-weight: 800;
+        text-decoration: none;
+      }
+
+      .nav a {
+        border: 1px solid rgba(255, 255, 255, 0.36);
+        background: rgba(255, 255, 255, 0.12);
+      }
+
+      .hero-grid {
+        width: min(1180px, 100%);
+        margin: 36px auto 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
+        gap: 34px;
+        align-items: center;
+      }
+
+      .eyebrow {
+        margin: 0 0 14px;
+        font-size: 13px;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #b7f7ef;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(42px, 6vw, 78px);
+        line-height: 0.96;
+        letter-spacing: 0;
+      }
+
+      .lead {
+        max-width: 720px;
+        margin: 22px 0 0;
+        font-size: clamp(17px, 2vw, 21px);
+        line-height: 1.58;
+        color: rgba(255, 255, 255, 0.84);
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 30px;
+      }
+
+      .cta.primary {
+        background: #ffffff;
+        color: var(--navy);
+      }
+
+      .cta.secondary {
+        border: 1px solid rgba(255, 255, 255, 0.36);
+        background: rgba(255, 255, 255, 0.12);
+      }
+
+      .demo-panel {
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.13);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(12px);
+        overflow: hidden;
+      }
+
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 16px 18px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.22);
+      }
+
+      .panel-title {
+        font-weight: 900;
+      }
+
+      .badge {
+        border-radius: 999px;
+        padding: 6px 10px;
+        background: rgba(183, 247, 239, 0.18);
+        color: #c9fff8;
+        font-size: 12px;
+        font-weight: 900;
+        white-space: nowrap;
+      }
+
+      .panel-body {
+        padding: 18px;
+      }
+
+      .file-row {
+        display: grid;
+        grid-template-columns: 42px 1fr auto;
+        gap: 12px;
+        align-items: center;
+        padding: 12px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.14);
+      }
+
+      .file-icon {
+        width: 42px;
+        height: 42px;
+        display: grid;
+        place-items: center;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.18);
+        font-weight: 900;
+      }
+
+      .file-name {
+        font-weight: 900;
+      }
+
+      .file-meta,
+      .step-meta {
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 13px;
+        line-height: 1.4;
+      }
+
+      .progress {
+        margin-top: 18px;
+      }
+
+      .progress-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 13px;
+        font-weight: 900;
+      }
+
+      .bar {
+        height: 10px;
+        margin-top: 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.2);
+        overflow: hidden;
+      }
+
+      .bar-fill {
+        height: 100%;
+        width: 0%;
+        border-radius: inherit;
+        background: #8ff3e7;
+        transition: width 0.45s ease;
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-top: 18px;
+      }
+
+      .metric {
+        border-radius: 8px;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.13);
+      }
+
+      .metric b {
+        display: block;
+        font-size: 20px;
+        line-height: 1.1;
+      }
+
+      .metric span {
+        display: block;
+        margin-top: 4px;
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      main {
+        width: min(1180px, calc(100% - 36px));
+        margin: 0 auto;
+        padding: 56px 0 72px;
+      }
+
+      .section-title {
+        margin: 0;
+        color: var(--navy);
+        font-size: clamp(28px, 4vw, 44px);
+        letter-spacing: 0;
+      }
+
+      .section-copy {
+        max-width: 780px;
+        margin: 12px 0 0;
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1.7;
+      }
+
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+        margin-top: 28px;
+      }
+
+      .flow-step,
+      .note {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--white);
+        box-shadow: 0 10px 28px rgba(15, 39, 66, 0.07);
+      }
+
+      .flow-step {
+        padding: 18px;
+      }
+
+      .step-number {
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        border-radius: 6px;
+        background: #e7faf7;
+        color: var(--teal-dark);
+        font-weight: 900;
+      }
+
+      .flow-step h3 {
+        margin: 14px 0 8px;
+        color: var(--navy);
+        font-size: 18px;
+      }
+
+      .flow-step p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.6;
+        font-size: 14px;
+      }
+
+      .notes {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+        margin-top: 36px;
+      }
+
+      .note {
+        padding: 22px;
+      }
+
+      .note h3 {
+        margin: 0 0 10px;
+        color: var(--navy);
+      }
+
+      .note ul {
+        margin: 0;
+        padding-left: 20px;
+        color: var(--muted);
+        line-height: 1.8;
+      }
+
+      .footer-cta {
+        margin-top: 36px;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--navy);
+        color: var(--white);
+        padding: 24px;
+      }
+
+      .footer-cta h2 {
+        margin: 0;
+        font-size: 24px;
+      }
+
+      .footer-cta p {
+        margin: 6px 0 0;
+        color: rgba(255, 255, 255, 0.72);
+      }
+
+      .footer-cta .cta {
+        background: var(--teal);
+        color: #ffffff;
+      }
+
+      @media (max-width: 880px) {
+        .hero {
+          min-height: auto;
+          padding: 88px 18px 28px;
+        }
+
+        .nav {
+          left: 18px;
+          right: 18px;
+        }
+
+        .hero-grid,
+        .flow,
+        .notes {
+          grid-template-columns: 1fr;
+        }
+
+        .metrics {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <section class="hero">
+        <nav class="nav" aria-label="Showcase navigation">
+          <div class="brand">MarketLens IQ</div>
+          <a href="./index.html">Open Dashboard</a>
+        </nav>
+
+        <div class="hero-grid">
+          <div>
+            <p class="eyebrow">Large Data Upload Showcase</p>
+            <h1>Analyze pharma market files up to 500MB in the browser</h1>
+            <p class="lead">
+              Show clients and teammates how MarketLens IQ uploads Excel, CSV, TSV, SQL, and JSON data, maps commercial fields, checks data health, and refreshes dashboard filters without sending files to a server.
+            </p>
+            <div class="actions">
+              <a class="cta primary" href="./index.html">Launch Live App</a>
+              <a class="cta secondary" href="#workflow">View Workflow</a>
+            </div>
+          </div>
+
+          <aside class="demo-panel" aria-label="Large upload walkthrough">
+            <div class="panel-head">
+              <div class="panel-title">500MB Upload Walkthrough</div>
+              <div class="badge" id="demoStatus">Worker parsing</div>
+            </div>
+            <div class="panel-body">
+              <div class="file-row">
+                <div class="file-icon">SQL</div>
+                <div>
+                  <div class="file-name">ims_market_dump.sql</div>
+                  <div class="file-meta">500MB local file, parsed in browser worker</div>
+                </div>
+                <div class="file-meta" id="demoBytes">0 MB</div>
+              </div>
+
+              <div class="progress">
+                <div class="progress-top">
+                  <span id="demoMessage">Preparing upload</span>
+                  <span id="demoPercent">0%</span>
+                </div>
+                <div class="bar"><div class="bar-fill" id="demoBar"></div></div>
+              </div>
+
+              <div class="metrics">
+                <div class="metric">
+                  <b id="demoRows">0</b>
+                  <span>Rows parsed</span>
+                </div>
+                <div class="metric">
+                  <b id="demoFields">0</b>
+                  <span>Mapped fields</span>
+                </div>
+                <div class="metric">
+                  <b id="demoFilters">0</b>
+                  <span>Filter options</span>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <main id="workflow">
+        <h2 class="section-title">How the large-data flow works</h2>
+        <p class="section-copy">
+          This page is for demonstrations. The actual dashboard opens from the button above, where users upload their own local files and interact with the filtered pharma dashboards.
+        </p>
+
+        <div class="flow">
+          <article class="flow-step">
+            <div class="step-number">1</div>
+            <h3>Upload locally</h3>
+            <p>Users choose Excel, CSV, TSV, SQL, or JSON files. The app keeps the file in the browser session.</p>
+          </article>
+          <article class="flow-step">
+            <div class="step-number">2</div>
+            <h3>Parse off the UI thread</h3>
+            <p>Large CSV, TSV, SQL, and XLSX work is handled in a Web Worker so the dashboard remains responsive.</p>
+          </article>
+          <article class="flow-step">
+            <div class="step-number">3</div>
+            <h3>Map pharma fields</h3>
+            <p>MarketLens IQ detects Brand, Company, Therapy, Molecule, Sales, Units, MAT, Month, and Pack columns.</p>
+          </article>
+          <article class="flow-step">
+            <div class="step-number">4</div>
+            <h3>Filter and analyze</h3>
+            <p>Dashboard selections use optimized filter matching so views refresh from the loaded dataset quickly.</p>
+          </article>
+        </div>
+
+        <div class="notes">
+          <section class="note">
+            <h3>Best format for 500MB files</h3>
+            <ul>
+              <li>CSV, TSV, and SQL dumps are the fastest large-file options.</li>
+              <li>XLSX is supported, but speed depends on browser memory and workbook structure.</li>
+              <li>For very large Excel workbooks, exporting the needed sheet as CSV is recommended.</li>
+            </ul>
+          </section>
+          <section class="note">
+            <h3>What to show during a demo</h3>
+            <ul>
+              <li>Upload a sample IMS/IQVIA-style file in the live app.</li>
+              <li>Show automatic field mapping and data health checks.</li>
+              <li>Apply filters and switch dashboard tabs to show responsive analysis.</li>
+            </ul>
+          </section>
+        </div>
+
+        <section class="footer-cta">
+          <div>
+            <h2>Ready to demonstrate the dashboard?</h2>
+            <p>Open the live app, upload a sample dataset, and show the filter-driven analytics flow.</p>
+          </div>
+          <a class="cta" href="./index.html">Open MarketLens IQ</a>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const steps = [
+        { pct: 8, rows: 0, fields: 0, filters: 0, bytes: 38, status: "Reading file", msg: "Preparing local upload" },
+        { pct: 24, rows: 185000, fields: 0, filters: 0, bytes: 125, status: "Worker parsing", msg: "Streaming SQL rows" },
+        { pct: 48, rows: 620000, fields: 4, filters: 0, bytes: 242, status: "Mapping fields", msg: "Detecting IMS columns" },
+        { pct: 72, rows: 1180000, fields: 10, filters: 120, bytes: 366, status: "Building filters", msg: "Indexing dashboard options" },
+        { pct: 96, rows: 1625000, fields: 13, filters: 500, bytes: 500, status: "Ready", msg: "Dashboard ready for analysis" }
+      ];
+
+      const nodes = {
+        status: document.getElementById("demoStatus"),
+        bytes: document.getElementById("demoBytes"),
+        message: document.getElementById("demoMessage"),
+        percent: document.getElementById("demoPercent"),
+        bar: document.getElementById("demoBar"),
+        rows: document.getElementById("demoRows"),
+        fields: document.getElementById("demoFields"),
+        filters: document.getElementById("demoFilters")
+      };
+
+      let index = 0;
+
+      function renderStep() {
+        const step = steps[index];
+        nodes.status.textContent = step.status;
+        nodes.bytes.textContent = `${step.bytes} MB`;
+        nodes.message.textContent = step.msg;
+        nodes.percent.textContent = `${step.pct}%`;
+        nodes.bar.style.width = `${step.pct}%`;
+        nodes.rows.textContent = step.rows.toLocaleString("en-IN");
+        nodes.fields.textContent = step.fields.toString();
+        nodes.filters.textContent = step.filters.toLocaleString("en-IN");
+        index = (index + 1) % steps.length;
+      }
+
+      renderStep();
+      window.setInterval(renderStep, 1700);
+    </script>
+  </body>
+</html>
